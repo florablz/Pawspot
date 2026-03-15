@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #__nuxt {
+  min-height: 100%;
+}
+
+body {
+  background: #09090b;
+  color: white;
+  font-family: Arial, sans-serif;
+}
