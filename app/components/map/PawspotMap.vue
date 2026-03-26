@@ -23,6 +23,7 @@ let L: any = null
 const categoryColors: Record<string, string> = {
   park: '#66BB6A',
   dog_park: '#43A047',
+  beach: '#4FC3F7',
   restaurant: '#FF9100',
   bar: '#FF6D00',
   cafe: '#FFB74D',
@@ -32,6 +33,7 @@ const categoryColors: Record<string, string> = {
 const categoryIcons: Record<string, string> = {
   park: '\u{1F333}',
   dog_park: '\u{1F43E}',
+  beach: '\u{1F30A}',
   restaurant: '\u{1F37D}\uFE0F',
   bar: '\u{1F37A}',
   cafe: '\u2615',
@@ -135,20 +137,9 @@ onMounted(async () => {
   map = L.map(mapEl.value, { zoomControl: true })
     .setView([startLat, startLng], startZoom)
 
-  // Dark base (roads, buildings = dark)
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OSM &copy; CARTO',
-    maxZoom: 19,
-  }).addTo(map)
-
-  // Color overlay from OSM (parks green, water blue — blended on top)
+  // Standard light map (OpenStreetMap default)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    className: 'color-overlay',
-  }).addTo(map)
-
-  // Labels on top
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
   }).addTo(map)
 

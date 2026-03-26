@@ -3,11 +3,13 @@ import type { PawspotPlace, MapCenter, CategoryFilter } from '~/types/places'
 
 const { latitude, longitude, loading, error, getLocation } = useUserLocation()
 const { places, fetching, fetchPlaces, searchByName, shouldShowSearchHere } = usePlacesSearch()
+const { loggedIn } = useAuth()
+const { checkFavorite, toggleFavorite, isFavorited } = useFavorites()
 
 const mapCenter = ref<MapCenter | null>(null)
 const mapZoom = ref(14)
 const searchQuery = ref('')
-const activeCategory = ref('all')
+const activeCategory = ref<CategoryKey | ''>('')
 const selectedPlace = ref<PawspotPlace | null>(null)
 const mapRef = ref<{ flyTo: (lat: number, lng: number, zoom?: number) => void; getZoom: () => number } | null>(null)
 const scrollContainer = ref<HTMLElement | null>(null)
@@ -17,9 +19,9 @@ const localized = ref(false)
 let searchDebounce: ReturnType<typeof setTimeout> | null = null
 
 const categories: CategoryFilter[] = [
-  { key: 'all', label: 'Tous', icon: '\u{1F30D}', color: 'bg-paw-orange-500' },
   { key: 'park', label: 'Parcs', icon: '\u{1F333}', color: 'bg-paw-green-500' },
-  { key: 'dog_park', label: 'Parcs a chiens', icon: '\u{1F43E}', color: 'bg-paw-green-700' },
+  { key: 'dog_park', label: 'Parcs à chiens', icon: '\u{1F43E}', color: 'bg-paw-green-700' },
+  { key: 'beach', label: 'Plages', icon: '\u{1F30A}', color: 'bg-paw-blue-500' },
   { key: 'restaurant', label: 'Restos', icon: '\u{1F37D}\uFE0F', color: 'bg-paw-orange-400' },
   { key: 'bar', label: 'Bars', icon: '\u{1F37A}', color: 'bg-paw-orange-500' },
   { key: 'cafe', label: 'Cafes', icon: '\u{2615}', color: 'bg-paw-orange-300' },
@@ -29,6 +31,7 @@ const categories: CategoryFilter[] = [
 const categoryIcons: Record<string, string> = {
   park: '\u{1F333}',
   dog_park: '\u{1F43E}',
+  beach: '\u{1F30A}',
   restaurant: '\u{1F37D}\uFE0F',
   bar: '\u{1F37A}',
   cafe: '\u2615',
@@ -38,11 +41,9 @@ const categoryIcons: Record<string, string> = {
 const showSearchHere = computed(() => !fetching.value && shouldShowSearchHere(mapCenter.value))
 
 const filteredPlaces = computed<PawspotPlace[]>(() => {
-  let result = places.value
-  if (activeCategory.value !== 'all') {
-    result = result.filter(p => p.category === activeCategory.value)
-  }
-  return result
+  const result = places.value
+  if (!activeCategory.value) return result
+  return result.filter(p => p.category === activeCategory.value)
 })
 
 function zoomToRadius(zoom: number): number {
@@ -82,7 +83,7 @@ function recenter() {
 
 function onSelectPlace(place: PawspotPlace) {
   selectedPlace.value = place
-  // Scroll down to the detail section
+  if (loggedIn.value) checkFavorite(place.id)
   nextTick(() => {
     detailSection.value?.scrollIntoView({ behavior: 'smooth' })
   })
@@ -107,6 +108,23 @@ function googleMapsUrl(place: PawspotPlace): string {
   return `https://www.google.com/maps/dir/${origin}/${dest}`
 }
 
+function dogPolicyText(place: PawspotPlace | null): string {
+  if (!place) return ''
+  switch (place.dogPolicy) {
+    case 'all_day':
+      return 'Chiens autorisés toute la journée'
+    case 'night_only':
+      return 'Chiens autorisés uniquement la nuit'
+    case 'restricted':
+      return 'Chiens autorisés sous conditions'
+    case 'no':
+      return 'Chiens interdits'
+    case 'unknown':
+    default:
+      return place.category === 'beach' ? 'Politique chiens à vérifier' : 'Information chiens non disponible'
+  }
+}
+
 function onSearchInput() {
   if (searchDebounce) clearTimeout(searchDebounce)
   const q = searchQuery.value.trim()
@@ -125,6 +143,10 @@ function onSearchInput() {
     }
   }, 500)
 }
+
+onMounted(() => {
+  locateMe()
+})
 
 function clearSearch() {
   searchQuery.value = ''
@@ -197,6 +219,7 @@ function clearSearch() {
               <circle cx="12" cy="12" r="3" /><path d="M12 2v4m0 12v4m10-10h-4M6 12H2" />
             </svg>
           </button>
+          <AuthUserMenu />
         </div>
       </div>
 
@@ -210,7 +233,7 @@ function clearSearch() {
             :class="activeCategory === cat.key
               ? 'bg-paw-orange-500 text-white shadow-lg shadow-paw-orange-500/25'
               : 'glass text-white/80 hover:text-white'"
-            @click="activeCategory = cat.key"
+            @click="activeCategory = activeCategory === cat.key ? '' : cat.key"
           >
             <span>{{ cat.icon }}</span>
             <span>{{ cat.label }}</span>
@@ -250,7 +273,7 @@ function clearSearch() {
           <div v-else class="text-sm text-white/70">
             <span class="font-semibold text-white">{{ filteredPlaces.length }}</span>
             lieu{{ filteredPlaces.length > 1 ? 'x' : '' }}
-            <span v-if="activeCategory !== 'all'" class="text-paw-orange-400">
+            <span v-if="activeCategory" class="text-paw-orange-400">
               &middot; {{ categories.find(c => c.key === activeCategory)?.label }}
             </span>
             <span v-if="searchQuery.trim()" class="text-paw-green-400">
@@ -259,7 +282,7 @@ function clearSearch() {
           </div>
           <button
             class="rounded-full bg-paw-green-700/30 px-3 py-1 text-xs text-paw-green-400 transition hover:bg-paw-green-700/50"
-            @click="searchQuery = ''; activeCategory = 'all'; clearSearch()"
+            @click="searchQuery = ''; activeCategory = ''; clearSearch()"
           >
             Reset
           </button>
@@ -318,18 +341,48 @@ function clearSearch() {
             <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-paw-brown-800 text-2xl">
               {{ categoryIcons[selectedPlace.category] || '\u{1F4CD}' }}
             </span>
-            <div>
+            <div class="flex-1">
               <h2 class="text-xl font-bold text-white leading-tight">{{ selectedPlace.name }}</h2>
               <span class="text-xs font-medium capitalize text-white/50">
                 {{ selectedPlace.category.replace('_', ' ') }}
               </span>
             </div>
+            <button
+              v-if="loggedIn"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition active:scale-90"
+              :class="isFavorited(selectedPlace.id) ? 'bg-paw-orange-500/20' : 'bg-white/5 hover:bg-white/10'"
+              @click="toggleFavorite(selectedPlace!)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 transition"
+                :class="isFavorited(selectedPlace.id) ? 'text-paw-orange-400 fill-paw-orange-400' : 'text-white/30'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+            </button>
           </div>
 
-          <!-- Dog friendly badge -->
-          <div v-if="selectedPlace.dog && selectedPlace.dog !== 'no'" class="inline-flex items-center gap-1.5 rounded-full bg-paw-green-700/30 px-3 py-1">
-            <span class="text-sm">{{'🐕'}}</span>
-            <span class="text-xs font-medium text-paw-green-400 capitalize">{{ selectedPlace.dog }}</span>
+          <!-- Dog policy badge -->
+          <div v-if="selectedPlace" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+            :class="{
+              'bg-paw-green-700/30 text-paw-green-400': selectedPlace.dogPolicy === 'all_day',
+              'bg-paw-blue-700/30 text-paw-blue-300': selectedPlace.dogPolicy === 'night_only',
+              'bg-paw-orange-700/30 text-paw-orange-300': selectedPlace.dogPolicy === 'restricted',
+              'bg-paw-red-700/30 text-paw-red-300': selectedPlace.dogPolicy === 'no',
+              'bg-paw-white/10 text-white/70': selectedPlace.dogPolicy === 'unknown',
+            }">
+            <span class="text-sm">{{ selectedPlace.dogPolicy === 'night_only' ? '🌙' : '🐕' }}</span>
+            <span class="text-xs font-medium"
+              :class="selectedPlace.dogPolicy === 'all_day' ? 'capitalize' : ''">
+              {{ dogPolicyText(selectedPlace) }}
+            </span>
           </div>
 
           <!-- Cuisine badge -->
@@ -390,6 +443,16 @@ function clearSearch() {
             </svg>
             <p class="text-xs text-white/40">{{ selectedPlace.lat.toFixed(5) }}, {{ selectedPlace.lon.toFixed(5) }}</p>
           </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="mb-6 rounded-2xl bg-paw-brown-800/30 p-4">
+          <PlaceAlerts :place-id="selectedPlace.id" />
+        </div>
+
+        <!-- Reviews -->
+        <div class="mb-6 rounded-2xl bg-paw-brown-800/30 p-4">
+          <PlaceReviews :place-id="selectedPlace.id" />
         </div>
 
         <!-- Actions -->
