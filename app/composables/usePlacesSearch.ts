@@ -26,7 +26,6 @@ export const usePlacesSearch = () => {
       })
       const q = query.toLowerCase()
       places.value = data.places.filter(p => p.name.toLowerCase().includes(q))
-      searchCenter.value = { lat, lng }
     } finally {
       fetching.value = false
     }

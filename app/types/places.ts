@@ -12,9 +12,12 @@ export interface PawspotPlace {
   description?: string
   cuisine?: string
   image?: string
+  dog?: string
+  dogPolicy?: 'all_day' | 'night_only' | 'no' | 'restricted' | 'unknown'
+  dogPolicySource?: string
 }
 
-export type CategoryKey = 'park' | 'dog_park' | 'restaurant' | 'bar' | 'cafe' | 'vet'
+export type CategoryKey = 'park' | 'dog_park' | 'beach' | 'restaurant' | 'bar' | 'cafe' | 'vet'
 
 export interface MapCenter {
   lat: number
@@ -22,7 +25,7 @@ export interface MapCenter {
 }
 
 export interface CategoryFilter {
-  key: 'all' | CategoryKey
+  key: CategoryKey
   label: string
   icon: string
   color: string

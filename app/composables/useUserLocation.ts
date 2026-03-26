@@ -25,6 +25,11 @@ export const useUserLocation = () => {
           error.value = err.message
           loading.value = false
           reject(err)
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
         }
       )
     })
