@@ -68,8 +68,8 @@ Mots de passe de démonstration uniquement : ne jamais lancer le seed sur la bas
 | `npm run generate` | Génère une version statique (peu utile ici : l'app a besoin de son API). |
 | `npm run lint` | Vérifie le code avec ESLint (`@nuxt/eslint`). |
 | `npm run lint:fix` | Corrige automatiquement ce qu'ESLint sait corriger. |
-| `npm run typecheck` | Vérifie les types TypeScript (`nuxi typecheck`, mode strict). |
-| `npm test` | Lance les tests unitaires et d'intégration (Vitest). |
+| `npm run typecheck` | Vérifie les types TypeScript en mode strict : l'application (`nuxi typecheck`) puis les tests (`vue-tsc` sur `tests/unit/server` et `tests/unit/app`). |
+| `npm test` | Lance les tests unitaires (Vitest, sans réseau). Échoue si aucun test n'est trouvé. |
 | `npm run db:generate` | Génère une nouvelle migration Drizzle après une modification de `server/database/schema.ts`. |
 | `npm run db:migrate` | Applique les migrations à la base désignée par `DATABASE_URL`. |
 | `npm run db:seed` | Remplit la base avec des données de démo. |
@@ -102,7 +102,10 @@ server/             Back Nitro
   utils/            Utilitaires serveur (auth…)
 shared/             Types et schémas (Zod) partagés entre front et back (à venir)
 scripts/            Scripts de maintenance (migrations, données de démo)
-tests/              Tests Vitest (à venir)
+tests/              Tests Vitest
+  unit/server/      Tests du back (routes d'API, utilitaires)
+  unit/app/         Tests du front (composables, utilitaires)
+  fixtures/         Données figées (réponses Overpass…) utilisées par les tests
 public/             Fichiers statiques (logo, favicon…)
 ```
 
