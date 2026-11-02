@@ -1,12 +1,32 @@
 /**
  * Données de démo (fictives) : `npm run db:seed`, après `npm run db:migrate`.
  * Idempotent : relançable sans créer de doublons.
+ *
+ * Garde-fou : refuse de tourner si `NODE_ENV=production`, ou si `DATABASE_URL`
+ * n'est pas une base locale `file:` (sauf `SEED_ALLOW_REMOTE=1`, à n'utiliser
+ * que sur une base de test distante, jamais sur la prod).
  */
 import './db-env'
-import { and, eq } from 'drizzle-orm'
-import bcrypt from 'bcrypt'
-import { client, db } from '../server/database'
-import { alerts, favorites, reviews, users } from '../server/database/schema'
+import type { NewPlaceRow } from '../server/database/schema'
+
+const seedUrl = process.env.DATABASE_URL || 'file:pawspot.db'
+if (process.env.NODE_ENV === 'production') {
+  console.error('Seed refusé : NODE_ENV=production. Les données de démo ne vont jamais en prod.')
+  process.exit(1)
+}
+if (!seedUrl.startsWith('file:') && process.env.SEED_ALLOW_REMOTE !== '1') {
+  console.error('Seed refusé : DATABASE_URL ne désigne pas une base locale (file:…). '
+    + 'Pour une base de test distante, relancer avec SEED_ALLOW_REMOTE=1.')
+  process.exit(1)
+}
+
+// Imports dynamiques : la connexion à la base n'est ouverte qu'après le garde-fou.
+const { and, eq } = await import('drizzle-orm')
+const { default: bcrypt } = await import('bcrypt')
+const { client, db } = await import('../server/database')
+const { alerts, favorites, places, reviews, users } = await import('../server/database/schema')
+const { computeDogStatus, parseOsmDogPolicy } = await import('../shared/dogStatus')
+const { normalizeName } = await import('../shared/text')
 
 // Mots de passe de démo volontairement évidents — jamais utilisés en prod.
 const DEMO_USERS = [
@@ -15,13 +35,44 @@ const DEMO_USERS = [
   { email: 'chloe@demo.pawspot.fr', username: 'chloe_demo', password: 'demo1234' },
 ] as const
 
-// Lieux fictifs à Paris (identifiants préfixés `demo-` pour ne pas entrer en collision avec OSM).
+// Lieux fictifs à Paris, en `source = 'user'` (ids `user:demo-N`, jamais en collision avec OSM ;
+// ils ne sont donc ni écrasés ni marqués « disparus » par le rafraîchissement Overpass).
 const DEMO_PLACES = {
-  parc: { id: 'demo-1', name: 'Parc des Truffes (démo)', lat: 48.8462, lon: 2.3371, category: 'park' },
-  cafe: { id: 'demo-2', name: 'Café du Museau (démo)', lat: 48.8635, lon: 2.3622, category: 'cafe' },
-  caniparc: { id: 'demo-3', name: 'Caniparc de la Butte (démo)', lat: 48.8867, lon: 2.3431, category: 'dog_park' },
-  resto: { id: 'demo-4', name: 'Bistrot des Pattes (démo)', lat: 48.8530, lon: 2.3690, category: 'restaurant' },
-} as const
+  parc: { id: 'user:demo-1', name: 'Parc des Truffes (démo)', lat: 48.8462, lon: 2.3371, category: 'park', tags: { leisure: 'park', dog: 'leashed' } },
+  cafe: { id: 'user:demo-2', name: 'Café du Museau (démo)', lat: 48.8635, lon: 2.3622, category: 'cafe', tags: { amenity: 'cafe', outdoor_seating: 'yes' } },
+  caniparc: { id: 'user:demo-3', name: 'Caniparc de la Butte (démo)', lat: 48.8867, lon: 2.3431, category: 'dog_park', tags: { leisure: 'dog_park' } },
+  resto: { id: 'user:demo-4', name: 'Bistrot des Pattes (démo)', lat: 48.8530, lon: 2.3690, category: 'restaurant', tags: { 'amenity': 'restaurant', 'outdoor_seating': 'yes', 'dog:conditional': 'no @ (12:00-14:00)' } },
+} as const satisfies Record<string, { id: string; name: string; lat: number; lon: number; category: NewPlaceRow['category']; tags: Record<string, string> }>
+
+async function upsertDemoPlaces() {
+  const now = new Date()
+  for (const p of Object.values(DEMO_PLACES)) {
+    const tags: Record<string, string> = p.tags
+    const hasTerrace = tags.outdoor_seating === 'yes'
+    const dog = computeDogStatus({ tags, hasTerrace, now })
+    const row: NewPlaceRow = {
+      id: p.id,
+      source: 'user',
+      name: p.name,
+      nameNormalized: normalizeName(p.name),
+      lat: p.lat,
+      lon: p.lon,
+      category: p.category,
+      osmDogPolicy: parseOsmDogPolicy(tags).policy,
+      hasTerrace,
+      dogStatus: dog.status,
+      dogStatusInfo: dog.info,
+      tags,
+      address: 'Paris (adresse fictive)',
+      status: 'active',
+      verified: true,
+      updatedAt: now,
+    }
+    const { id: _id, ...update } = row
+    await db.insert(places).values(row).onConflictDoUpdate({ target: places.id, set: update })
+  }
+  console.log(`Lieux de démo : ${Object.keys(DEMO_PLACES).length} à jour.`)
+}
 
 async function upsertUser(u: (typeof DEMO_USERS)[number]) {
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, u.email)).get()
@@ -34,6 +85,7 @@ async function upsertUser(u: (typeof DEMO_USERS)[number]) {
 }
 
 async function main() {
+  await upsertDemoPlaces()
   const [alice, bruno, chloe] = await Promise.all(DEMO_USERS.map(upsertUser)) as [number, number, number]
 
   const demoReviews = [
@@ -64,14 +116,7 @@ async function main() {
     const exists = await db.select({ id: favorites.id }).from(favorites)
       .where(and(eq(favorites.userId, userId), eq(favorites.placeId, place.id))).get()
     if (!exists) {
-      await db.insert(favorites).values({
-        userId,
-        placeId: place.id,
-        placeName: place.name,
-        placeLat: place.lat,
-        placeLon: place.lon,
-        placeCategory: place.category,
-      })
+      await db.insert(favorites).values({ userId, placeId: place.id })
       added++
     }
   }
