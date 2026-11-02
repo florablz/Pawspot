@@ -20,8 +20,8 @@ async function onSubmit() {
   try {
     await register(email.value, username.value, password.value)
     navigateTo('/')
-  } catch (err: any) {
-    errorMsg.value = err?.data?.message || err?.statusMessage || 'Erreur lors de la creation du compte'
+  } catch (err: unknown) {
+    errorMsg.value = getApiErrorMessage(err, 'Erreur lors de la creation du compte')
   } finally {
     submitting.value = false
   }
