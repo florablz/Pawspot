@@ -1,10 +1,7 @@
-import type { Place } from '#shared/types'
+import type { AlertType } from '#shared/schemas'
 
 // Formes des réponses JSON des routes `server/api/**` (dates sérialisées en chaîne ISO)
 // qui n'ont pas encore de type dans `shared/`.
-
-/** Types d'alerte acceptés par `POST /api/alerts` ; `change` est l'ancien type, encore lisible. */
-export type AlertType = 'closed' | 'temporarily_closed' | 'dogs_not_allowed' | 'info_change' | 'change'
 
 export interface PlaceAlert {
   id: number
@@ -26,9 +23,6 @@ export interface PlaceReview {
   avatarUrl?: string | null
   createdAt: string
 }
-
-/** Élément de `GET /api/favorites` : le lieu complet et la date d'ajout. */
-export type FavoritePlace = Place & { favoritedAt: string }
 
 /** Réponse de `POST /api/favorites` et `DELETE /api/favorites/:placeId`. */
 export interface FavoriteToggleResponse {

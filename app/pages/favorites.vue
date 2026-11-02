@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CATEGORIES, DEFAULT_CATEGORY_ICON } from '#shared/categories'
-import type { FavoritePlace } from '~/types/api'
+import type { FavoritePlace } from '#shared/types'
 
 const { loggedIn } = useAuth()
 const { setFavorite } = useFavorites()

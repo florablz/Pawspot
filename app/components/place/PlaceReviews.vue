@@ -1,12 +1,9 @@
 <script setup lang="ts">
+import { REVIEW_COMMENT_MAX_LENGTH, REVIEW_MAX_PHOTOS, REVIEW_PHOTO_MAX_LENGTH } from '#shared/schemas'
 import type { PlaceReview } from '~/types/api'
 
 const props = defineProps<{ placeId: string }>()
 
-const COMMENT_MAX_LENGTH = 1000
-const MAX_PHOTOS = 5
-/** Longueur maximale d'une photo encodée (data URI) acceptée par l'API. */
-const PHOTO_MAX_LENGTH = 2_800_000
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const { loggedIn } = useAuth()
@@ -47,8 +44,8 @@ function onFileChange(e: Event) {
   if (!files) return
   errorMsg.value = ''
   for (const file of Array.from(files)) {
-    if (photos.value.length >= MAX_PHOTOS) {
-      errorMsg.value = `${MAX_PHOTOS} photos maximum.`
+    if (photos.value.length >= REVIEW_MAX_PHOTOS) {
+      errorMsg.value = `${REVIEW_MAX_PHOTOS} photos maximum.`
       break
     }
     if (!PHOTO_TYPES.includes(file.type)) {
@@ -58,11 +55,11 @@ function onFileChange(e: Event) {
     const reader = new FileReader()
     reader.onload = () => {
       const data = reader.result as string
-      if (data.length > PHOTO_MAX_LENGTH) {
+      if (data.length > REVIEW_PHOTO_MAX_LENGTH) {
         errorMsg.value = 'Photo trop lourde (2 Mo maximum).'
         return
       }
-      if (photos.value.length < MAX_PHOTOS) photos.value.push(data)
+      if (photos.value.length < REVIEW_MAX_PHOTOS) photos.value.push(data)
     }
     reader.readAsDataURL(file)
   }
@@ -172,10 +169,10 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
         v-model="comment"
         class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/40 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
         rows="3"
-        :maxlength="COMMENT_MAX_LENGTH"
+        :maxlength="REVIEW_COMMENT_MAX_LENGTH"
         placeholder="Ton avis…"
       />
-      <p class="mb-3 text-right text-[11px] text-white/50">{{ comment.length }} / {{ COMMENT_MAX_LENGTH }}</p>
+      <p class="mb-3 text-right text-[11px] text-white/50">{{ comment.length }} / {{ REVIEW_COMMENT_MAX_LENGTH }}</p>
 
       <div class="mb-3">
         <ul v-if="photos.length" class="mb-2 flex gap-2 overflow-x-auto pb-1">
@@ -192,13 +189,13 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
           </li>
         </ul>
         <label
-          v-if="photos.length < MAX_PHOTOS"
+          v-if="photos.length < REVIEW_MAX_PHOTOS"
           class="inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-lg bg-white/5 px-3 text-xs text-white/70 transition focus-within:ring-2 focus-within:ring-paw-orange-300 hover:bg-white/10 hover:text-white"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
           </svg>
-          Ajouter des photos ({{ photos.length }} / {{ MAX_PHOTOS }})
+          Ajouter des photos ({{ photos.length }} / {{ REVIEW_MAX_PHOTOS }})
           <input type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" @change="onFileChange">
         </label>
       </div>
