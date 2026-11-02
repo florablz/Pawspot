@@ -1,5 +1,5 @@
 /**
- * Schémas Zod des corps des routes avis et alertes.
+ * Schémas Zod des corps des routes avis, alertes et authentification.
  * À déplacer dans `shared/schemas.ts` pour que le front valide
  * avec les mêmes règles.
  */
@@ -76,3 +76,38 @@ export const alertBodySchema = z.object({
 })
 
 export type AlertBody = z.infer<typeof alertBodySchema>
+
+// ---------------------------------------------------------------------------
+// Authentification
+// ---------------------------------------------------------------------------
+
+export const USERNAME_MIN_LENGTH = 3
+export const USERNAME_MAX_LENGTH = 20
+export const PASSWORD_MIN_LENGTH = 8
+
+/** Email normalisé : espaces retirés, minuscules. */
+const normalizedEmail = z.string({ error: 'Email invalide' }).trim().toLowerCase()
+
+export const registerBodySchema = z.object({
+  email: normalizedEmail.pipe(z.email({ error: 'Email invalide' })),
+  username: z.string({ error: 'Pseudo requis' })
+    .trim()
+    .min(USERNAME_MIN_LENGTH, { error: `Le pseudo doit faire entre ${USERNAME_MIN_LENGTH} et ${USERNAME_MAX_LENGTH} caractères` })
+    .max(USERNAME_MAX_LENGTH, { error: `Le pseudo doit faire entre ${USERNAME_MIN_LENGTH} et ${USERNAME_MAX_LENGTH} caractères` }),
+  password: z.string({ error: 'Mot de passe requis' })
+    .min(PASSWORD_MIN_LENGTH, { error: `Le mot de passe doit faire au moins ${PASSWORD_MIN_LENGTH} caractères` }),
+})
+
+export type RegisterBody = z.infer<typeof registerBodySchema>
+
+/** Connexion : on ne vérifie pas le format de l'email (un email mal formé n'existe simplement pas). */
+export const loginBodySchema = z.object({
+  email: z.string({ error: 'Email et mot de passe requis' })
+    .trim()
+    .toLowerCase()
+    .min(1, { error: 'Email et mot de passe requis' }),
+  password: z.string({ error: 'Email et mot de passe requis' })
+    .min(1, { error: 'Email et mot de passe requis' }),
+})
+
+export type LoginBody = z.infer<typeof loginBodySchema>
