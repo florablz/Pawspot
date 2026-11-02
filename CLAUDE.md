@@ -32,6 +32,7 @@ Node est installé par Homebrew. S'il n'est pas trouvé, faire `export PATH=/opt
 ## Règles
 - Avant de déclarer une tâche terminée, `lint`, `typecheck` et `test` doivent passer.
 - Faire de petits commits, un sujet par commit, en français, au format `type(portée): message` (ex. `fix(front): …`).
+- Les commits et les pushs se font au nom de Flora uniquement : pas de ligne `Co-Authored-By: Claude`, ni aucune mention de Claude dans les messages ou les PR.
 - Ne jamais committer de base (`*.db*`), d'upload, de `.env` ni de secret. Ne pas pousser, déployer ou créer de compte en ligne sans l'accord de Flora.
 - Les tests n'appellent jamais Overpass ni Nominatim en vrai : on utilise des mocks et les fixtures de `tests/fixtures/`.
 - Interface en français avec les accents. Zones tactiles d'au moins 44 px. Pas de `v-html` sur du contenu utilisateur.
