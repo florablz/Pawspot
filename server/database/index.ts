@@ -1,8 +1,17 @@
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { createClient } from '@libsql/client'
+import { drizzle } from 'drizzle-orm/libsql'
 import * as schema from './schema'
 
-const sqlite = new Database('pawspot.db')
-sqlite.pragma('journal_mode = WAL')
+/**
+ * Client libSQL : fichier local en dev (`file:pawspot.db`), Turso en prod.
+ * Configuré par `DATABASE_URL` et `DATABASE_AUTH_TOKEN`.
+ * Attention : toutes les requêtes sont asynchrones (`await`).
+ */
+export const client = createClient({
+  url: process.env.DATABASE_URL || 'file:pawspot.db',
+  authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
+})
 
-export const db = drizzle(sqlite, { schema })
+export const db = drizzle(client, { schema })
+
+export type Database = typeof db
