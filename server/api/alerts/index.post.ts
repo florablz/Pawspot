@@ -1,30 +1,27 @@
+import { recomputeDogStatus } from '~~/server/services/places'
 import { db } from '../../database'
 import { alerts } from '../../database/schema'
+import { readValidatedBodyOr400, requirePlace } from '../../utils/api'
+import { requireAuth } from '../../utils/auth'
+import { alertBodySchema } from '../../utils/bodySchemas'
 
+/**
+ * `POST /api/alerts` `{ placeId, type, description? }` → alerte créée.
+ * Le statut chien du lieu est recalculé ensuite (`dogs_not_allowed` compte à partir de 3 membres).
+ */
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
-  const body = await readBody(event)
-
-  const placeId = String(body.placeId || '')
-  const type = String(body.type || '')
-  const description = String(body.description || '').trim()
-
-  if (!placeId) {
-    throw createError({ statusCode: 400, statusMessage: 'placeId requis' })
-  }
-  if (type !== 'closed' && type !== 'change') {
-    throw createError({ statusCode: 400, statusMessage: 'Type invalide (closed ou change)' })
-  }
-  if (type === 'change' && !description) {
-    throw createError({ statusCode: 400, statusMessage: 'Description requise pour un changement' })
-  }
+  const { placeId, type, description } = await readValidatedBodyOr400(event, alertBodySchema)
+  await requirePlace(placeId)
 
   const inserted = await db.insert(alerts).values({
     placeId,
     userId: user.id,
     type,
-    description: description || null,
-  }).returning({ id: alerts.id }).get()
+    description,
+  }).returning({ id: alerts.id, createdAt: alerts.createdAt }).get()
+
+  await recomputeDogStatus(placeId)
 
   return {
     id: inserted.id,
@@ -32,6 +29,6 @@ export default defineEventHandler(async (event) => {
     type,
     description,
     username: user.username,
-    createdAt: new Date(),
+    createdAt: inserted.createdAt,
   }
 })

@@ -1,12 +1,22 @@
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { db } from '../../database'
 import { reviews, users } from '../../database/schema'
+import { getPlaceIdParam } from '../../utils/api'
 
-export default defineEventHandler(async (event) => {
-  const placeId = getRouterParam(event, 'placeId')
-  if (!placeId) {
-    throw createError({ statusCode: 400, statusMessage: 'placeId requis' })
+function parsePhotos(raw: string | null): string[] {
+  if (!raw) return []
+  try {
+    const value: unknown = JSON.parse(raw)
+    return Array.isArray(value) ? value.filter((p): p is string => typeof p === 'string') : []
   }
+  catch {
+    return []
+  }
+}
+
+/** `GET /api/reviews/:placeId` → avis du lieu, plus récents d'abord. */
+export default defineEventHandler(async (event) => {
+  const placeId = getPlaceIdParam(event)
 
   const rows = await db
     .select({
@@ -23,10 +33,8 @@ export default defineEventHandler(async (event) => {
     .from(reviews)
     .innerJoin(users, eq(reviews.userId, users.id))
     .where(eq(reviews.placeId, placeId))
+    .orderBy(desc(reviews.createdAt), desc(reviews.id))
     .all()
 
-  return rows.map(r => ({
-    ...r,
-    photos: r.photos ? JSON.parse(r.photos) : [],
-  }))
+  return rows.map(r => ({ ...r, photos: parsePhotos(r.photos) }))
 })
