@@ -23,6 +23,21 @@ logs
 .env.*
 !.env.example
 
-# Database
-pawspot.db
-pawspot.db-journal
+# Bases SQLite locales (jamais committées)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Fichiers uploadés en local
+/uploads
+
+# Fichiers de debug
+tmp_*.json
+
+# Rapports de tests
+/coverage
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
