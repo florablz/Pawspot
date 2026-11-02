@@ -1,34 +1,72 @@
 <script setup lang="ts">
-import type { PlaceAlert } from '~/types/api'
+import type { AlertType, PlaceAlert } from '~/types/api'
 
 const props = defineProps<{ placeId: string }>()
 
 const { loggedIn } = useAuth()
 
+type NewAlertType = Exclude<AlertType, 'change'>
+
+const DESCRIPTION_MAX_LENGTH = 500
+
+/** Types proposés dans le formulaire (libellés courts, icône décorative). */
+const ALERT_OPTIONS: ReadonlyArray<{ type: NewAlertType, label: string, icon: string }> = [
+  { type: 'closed', label: 'Fermé définitivement', icon: '⛔' },
+  { type: 'temporarily_closed', label: 'Fermé temporairement', icon: '⏸️' },
+  { type: 'dogs_not_allowed', label: 'N\'accepte plus les chiens', icon: '🚫' },
+  { type: 'info_change', label: 'Autre changement', icon: '✏️' },
+]
+
+/** Libellés d'affichage, y compris l'ancien type `change`. */
+const ALERT_LABELS: Record<AlertType, string> = {
+  closed: 'Signalé fermé définitivement',
+  temporarily_closed: 'Signalé fermé temporairement',
+  dogs_not_allowed: 'Signalé : n\'accepte plus les chiens',
+  info_change: 'Changement signalé',
+  change: 'Changement signalé',
+}
+
+const SEVERE: ReadonlySet<AlertType> = new Set(['closed', 'dogs_not_allowed'])
+
 const alerts = ref<PlaceAlert[]>([])
 const loadingAlerts = ref(false)
+const loadError = ref<string | null>(null)
 const showForm = ref(false)
-const alertType = ref<'closed' | 'change' | ''>('')
+const alertType = ref<NewAlertType | ''>('')
 const description = ref('')
 const submitting = ref(false)
 const errorMsg = ref('')
 
+const descriptionRequired = computed(() => alertType.value === 'info_change')
+
 async function loadAlerts() {
   loadingAlerts.value = true
+  loadError.value = null
   try {
-    alerts.value = await $fetch<PlaceAlert[]>(`/api/alerts/${props.placeId}`)
-  } catch { /* ignore */ } finally {
+    alerts.value = await $fetch<PlaceAlert[]>(`/api/alerts/${encodeURIComponent(props.placeId)}`)
+  }
+  catch (err: unknown) {
+    loadError.value = getApiErrorMessage(err, 'Impossible de charger les signalements.')
+  }
+  finally {
     loadingAlerts.value = false
   }
 }
 
+function resetForm() {
+  showForm.value = false
+  alertType.value = ''
+  description.value = ''
+  errorMsg.value = ''
+}
+
 async function submit() {
   if (!alertType.value) {
-    errorMsg.value = 'Choisis un type'
+    errorMsg.value = 'Choisis le type de problème.'
     return
   }
-  if (alertType.value === 'change' && !description.value.trim()) {
-    errorMsg.value = 'Decris le changement'
+  if (descriptionRequired.value && !description.value.trim()) {
+    errorMsg.value = 'Décris le changement.'
     return
   }
   errorMsg.value = ''
@@ -39,49 +77,39 @@ async function submit() {
       body: {
         placeId: props.placeId,
         type: alertType.value,
-        description: description.value,
+        description: description.value.trim() || undefined,
       },
     })
     alerts.value.unshift(alert)
-    showForm.value = false
-    alertType.value = ''
-    description.value = ''
-  } catch (err: unknown) {
-    errorMsg.value = getApiErrorMessage(err, 'Erreur')
-  } finally {
+    resetForm()
+  }
+  catch (err: unknown) {
+    errorMsg.value = getApiErrorMessage(err, 'Impossible d\'envoyer le signalement.')
+  }
+  finally {
     submitting.value = false
   }
 }
 
-function timeAgo(date: string | Date) {
-  const d = new Date(date)
-  const diff = Date.now() - d.getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "a l'instant"
-  if (mins < 60) return `il y a ${mins}min`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `il y a ${hours}h`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `il y a ${days}j`
-  return d.toLocaleDateString('fr-FR')
-}
-
-watch(() => props.placeId, () => loadAlerts(), { immediate: true })
+watch(() => props.placeId, () => {
+  resetForm()
+  loadAlerts()
+}, { immediate: true })
 </script>
 
 <template>
   <div>
-    <!-- Header -->
-    <div class="mb-4 flex items-center justify-between">
+    <div class="mb-4 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2">
-        <h3 class="text-sm font-semibold text-white">Avertissements</h3>
-        <span v-if="alerts.length" class="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-400">
-          {{ alerts.length }}
+        <h3 class="text-sm font-semibold text-white">Signalements</h3>
+        <span v-if="alerts.length" class="rounded-full bg-paw-red-700/30 px-2 py-0.5 text-xs text-paw-red-300">
+          {{ alerts.length }}<span class="sr-only"> signalement{{ alerts.length > 1 ? 's' : '' }}</span>
         </span>
       </div>
       <button
         v-if="loggedIn && !showForm"
-        class="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/30"
+        type="button"
+        class="min-h-[44px] rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-300 transition hover:bg-paw-red-700/50"
         @click="showForm = true"
       >
         + Signaler
@@ -89,124 +117,95 @@ watch(() => props.placeId, () => loadAlerts(), { immediate: true })
       <NuxtLink
         v-else-if="!loggedIn"
         to="/login"
-        class="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/30"
+        class="flex min-h-[44px] items-center rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-300 transition hover:bg-paw-red-700/50"
       >
         Connecte-toi pour signaler
       </NuxtLink>
     </div>
 
-    <!-- Alert form -->
-    <div v-if="showForm" class="mb-5 rounded-2xl bg-paw-brown-800/60 p-4">
-      <p class="mb-3 text-xs text-white/50">Quel est le probleme ?</p>
+    <form v-if="showForm" class="mb-5 rounded-2xl bg-paw-brown-800/60 p-4" @submit.prevent="submit">
+      <fieldset class="mb-3">
+        <legend class="mb-3 text-xs text-white/70">Quel est le problème ?</legend>
+        <div class="grid grid-cols-2 gap-2">
+          <label
+            v-for="opt in ALERT_OPTIONS"
+            :key="opt.type"
+            class="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ring-1 transition focus-within:ring-2 focus-within:ring-paw-orange-300"
+            :class="alertType === opt.type
+              ? 'bg-paw-red-700/30 text-paw-red-300 ring-paw-red-300/60'
+              : 'bg-paw-brown-900/60 text-white/70 ring-white/10 hover:text-white'"
+          >
+            <input v-model="alertType" type="radio" name="alert-type" :value="opt.type" class="sr-only">
+            <span aria-hidden="true">{{ opt.icon }}</span>
+            <span>{{ opt.label }}</span>
+          </label>
+        </div>
+      </fieldset>
 
-      <!-- Type selection -->
-      <div class="mb-3 flex gap-2">
-        <button
-          class="flex-1 rounded-xl px-4 py-3 text-sm font-medium transition active:scale-[0.98]"
-          :class="alertType === 'closed'
-            ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/40'
-            : 'bg-paw-brown-900/60 text-white/50 ring-1 ring-white/10 hover:text-white/70'"
-          @click="alertType = 'closed'"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-1.5 h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" /><path d="m15 9-6 6M9 9l6 6" />
-          </svg>
-          Lieu ferme
-        </button>
-        <button
-          class="flex-1 rounded-xl px-4 py-3 text-sm font-medium transition active:scale-[0.98]"
-          :class="alertType === 'change'
-            ? 'bg-yellow-500/20 text-yellow-400 ring-1 ring-yellow-500/40'
-            : 'bg-paw-brown-900/60 text-white/50 ring-1 ring-white/10 hover:text-white/70'"
-          @click="alertType = 'change'"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-1.5 h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          </svg>
-          Changement
-        </button>
-      </div>
-
-      <!-- Description -->
+      <label for="alert-description" class="mb-1.5 block text-xs text-white/70">
+        {{ descriptionRequired ? 'Description (obligatoire)' : 'Détails (optionnel)' }}
+      </label>
       <textarea
+        id="alert-description"
         v-model="description"
-        class="mb-3 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
+        class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/40 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
         rows="2"
-        :placeholder="alertType === 'closed' ? 'Details (optionnel)...' : 'Decris le changement...'"
+        :maxlength="DESCRIPTION_MAX_LENGTH"
+        :required="descriptionRequired"
+        :placeholder="descriptionRequired ? 'Décris le changement…' : 'Précisions…'"
       />
+      <p class="mb-3 text-right text-[11px] text-white/50">{{ description.length }} / {{ DESCRIPTION_MAX_LENGTH }}</p>
 
-      <div v-if="errorMsg" class="mb-3 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-400">{{ errorMsg }}</div>
+      <div v-if="errorMsg" class="mb-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-300" role="alert">{{ errorMsg }}</div>
 
       <div class="flex gap-2">
         <button
+          type="submit"
           :disabled="submitting"
-          class="flex-1 rounded-xl bg-red-500/80 py-2.5 text-sm font-semibold text-white transition hover:bg-red-500 active:scale-[0.98] disabled:opacity-50"
-          @click="submit"
+          class="min-h-[44px] flex-1 rounded-xl bg-paw-red-700 text-sm font-semibold text-white transition hover:bg-paw-red-700/80 active:scale-[0.98] disabled:opacity-50"
         >
-          {{ submitting ? 'Envoi...' : 'Envoyer' }}
+          {{ submitting ? 'Envoi…' : 'Envoyer' }}
         </button>
         <button
-          class="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-white/50 transition hover:text-white"
-          @click="showForm = false; alertType = ''; description = ''"
+          type="button"
+          class="min-h-[44px] rounded-xl border border-white/10 px-4 text-sm text-white/70 transition hover:text-white"
+          @click="resetForm"
         >
           Annuler
         </button>
       </div>
+    </form>
+
+    <div v-if="loadingAlerts" class="flex justify-center py-4" role="status">
+      <span class="h-5 w-5 animate-spin rounded-full border-2 border-paw-red-300 border-t-transparent" aria-hidden="true" />
+      <span class="sr-only">Chargement des signalements…</span>
     </div>
 
-    <!-- Loading -->
-    <div v-if="loadingAlerts" class="flex justify-center py-4">
-      <div class="h-5 w-5 animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+    <div v-else-if="loadError" class="flex items-center justify-between gap-3 py-2 text-sm text-white/80" role="alert">
+      <span>{{ loadError }}</span>
+      <button type="button" class="min-h-[44px] rounded-full bg-paw-orange-500/20 px-4 text-xs text-paw-orange-300" @click="loadAlerts">
+        Réessayer
+      </button>
     </div>
 
-    <!-- Alerts list -->
-    <div v-else-if="alerts.length" class="space-y-2.5">
-      <div
+    <ul v-else-if="alerts.length" class="space-y-2.5">
+      <li
         v-for="alert in alerts"
         :key="alert.id"
-        class="flex items-start gap-3 rounded-xl p-3"
-        :class="alert.type === 'closed' ? 'bg-red-500/10' : 'bg-yellow-500/10'"
+        class="rounded-xl p-3"
+        :class="SEVERE.has(alert.type) ? 'bg-paw-red-700/20' : 'bg-paw-yellow-400/10'"
       >
-        <svg
-          v-if="alert.type === 'closed'"
-          xmlns="http://www.w3.org/2000/svg"
-          class="mt-0.5 h-4 w-4 shrink-0 text-red-400"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="12" cy="12" r="10" /><path d="m15 9-6 6M9 9l6 6" />
-        </svg>
-        <svg
-          v-else
-          xmlns="http://www.w3.org/2000/svg"
-          class="mt-0.5 h-4 w-4 shrink-0 text-yellow-400"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        </svg>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-medium" :class="alert.type === 'closed' ? 'text-red-400' : 'text-yellow-400'">
-              {{ alert.type === 'closed' ? 'Lieu ferme' : 'Changement' }}
-            </span>
-            <span class="text-xs text-white/30">{{ timeAgo(alert.createdAt) }}</span>
-          </div>
-          <p v-if="alert.description" class="mt-1 text-sm text-white/60">{{ alert.description }}</p>
-          <p class="mt-1 text-xs text-white/30">par {{ alert.username }}</p>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold" :class="SEVERE.has(alert.type) ? 'text-paw-red-300' : 'text-paw-yellow-300'">
+            {{ ALERT_LABELS[alert.type] ?? 'Signalement' }}
+          </span>
+          <time class="text-xs text-white/50" :datetime="alert.createdAt">{{ formatTimeAgo(alert.createdAt) }}</time>
         </div>
-      </div>
-    </div>
+        <p v-if="alert.description" class="mt-1 text-sm text-white/80">{{ alert.description }}</p>
+        <p class="mt-1 text-xs text-white/50">par {{ alert.username }}</p>
+      </li>
+    </ul>
 
-    <!-- Empty state -->
-    <p v-else class="py-3 text-center text-sm text-white/30">Aucun avertissement</p>
+    <p v-else class="py-3 text-center text-sm text-white/50">Aucun signalement récent</p>
   </div>
 </template>
