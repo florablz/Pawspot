@@ -1,0 +1,59 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (fixture PawSpot)",
+  "elements": [
+    {
+      "type": "node",
+      "id": 1001,
+      "lat": 48.8540,
+      "lon": 2.3326,
+      "tags": {
+        "amenity": "cafe",
+        "name": "Café de Flore",
+        "outdoor_seating": "yes",
+        "dog": "yes",
+        "addr:housenumber": "172",
+        "addr:street": "Boulevard Saint-Germain",
+        "addr:postcode": "75006",
+        "addr:city": "Paris",
+        "image": "https://commons.wikimedia.org/wiki/File:Cafe_de_Flore.jpg"
+      }
+    },
+    {
+      "type": "way",
+      "id": 2002,
+      "center": { "lat": 48.8796, "lon": 2.3095 },
+      "tags": {
+        "leisure": "park",
+        "name": "Parc Monceau",
+        "dog:conditional": "no @ (Jun-Sep)"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1003,
+      "lat": 48.8600,
+      "lon": 2.3400,
+      "tags": { "amenity": "bar", "outdoor_seating": "yes", "dog": "no", "name": "Bar interdit" }
+    },
+    {
+      "type": "node",
+      "id": 1004,
+      "lat": 48.8650,
+      "lon": 2.3450,
+      "tags": { "amenity": "restaurant", "outdoor_seating": "yes" }
+    },
+    {
+      "type": "node",
+      "id": 1005,
+      "lat": 43.6950,
+      "lon": 7.2650,
+      "tags": { "natural": "beach", "name": "Plage de nuit", "dog:conditional": "yes @ night" }
+    },
+    {
+      "type": "relation",
+      "id": 3006,
+      "tags": { "leisure": "park", "name": "Sans coordonnées" }
+    }
+  ]
+}
