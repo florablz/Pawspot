@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Le mot de passe doit faire au moins 8 caracteres' })
   }
 
-  const existing = db.select({ id: users.id })
+  const existing = await db.select({ id: users.id })
     .from(users)
     .where(or(eq(users.email, email), eq(users.username, username)))
     .get()
@@ -30,10 +30,13 @@ export default defineEventHandler(async (event) => {
 
   const passwordHash = await hashPassword(password)
 
-  const result = db.insert(users).values({ email, username, passwordHash }).run()
-  const userId = Number(result.lastInsertRowid)
+  const inserted = await db.insert(users)
+    .values({ email, username, passwordHash })
+    .returning({ id: users.id })
+    .get()
+  const userId = inserted.id
 
-  const token = createSession(userId)
+  const token = await createSession(userId)
   setSessionCookie(event, token)
 
   return {

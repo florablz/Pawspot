@@ -3,7 +3,7 @@ import { db } from '../../database'
 import { favorites } from '../../database/schema'
 
 export default defineEventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = await requireAuth(event)
   const body = await readBody(event)
 
   const placeId = String(body.placeId || '')
@@ -17,26 +17,26 @@ export default defineEventHandler(async (event) => {
   }
 
   // Check if already favorited
-  const existing = db.select({ id: favorites.id })
+  const existing = await db.select({ id: favorites.id })
     .from(favorites)
     .where(and(eq(favorites.userId, user.id), eq(favorites.placeId, placeId)))
     .get()
 
   if (existing) {
     // Remove favorite (toggle)
-    db.delete(favorites).where(eq(favorites.id, existing.id)).run()
+    await db.delete(favorites).where(eq(favorites.id, existing.id))
     return { favorited: false }
   }
 
   // Add favorite
-  db.insert(favorites).values({
+  await db.insert(favorites).values({
     userId: user.id,
     placeId,
     placeName,
     placeLat,
     placeLon,
     placeCategory,
-  }).run()
+  })
 
   return { favorited: true }
 })

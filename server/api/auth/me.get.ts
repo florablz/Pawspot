@@ -1,4 +1,4 @@
-export default defineEventHandler((event) => {
-  const user = getUserFromSession(event)
+export default defineEventHandler(async (event) => {
+  const user = await getUserFromSession(event)
   return { user }
 })
