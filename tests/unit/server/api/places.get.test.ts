@@ -87,6 +87,8 @@ describe('GET /api/places — réponses', () => {
   it('Overpass en erreur réseau : stale: true, jamais de 500', async () => {
     fetchMock.mockRejectedValue(new TypeError('getaddrinfo ENOTFOUND overpass-api.de'))
     const res = await api.request<PlacesResponse>('GET', `/api/places?${PARIS}&zoom=14`)
+    // Disjoncteur remis à zéro entre les tests : l'erreur réseau est bien rencontrée.
+    expect(fetchMock).toHaveBeenCalled()
     expect(res.status).toBe(200)
     expect(res.body.stale).toBe(true)
     expect(res.text).not.toContain('ENOTFOUND')
