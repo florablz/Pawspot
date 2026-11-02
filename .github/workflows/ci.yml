@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualite:
+    name: Lint, typecheck et tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Aucune vraie valeur ni secret : base SQLite locale éphémère.
+      DATABASE_URL: file:pawspot.db
+      DATABASE_AUTH_TOKEN: ''
+      APP_URL: http://localhost:3000
+      NUXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # `npm ci` lance aussi `nuxt prepare` (postinstall), qui génère .nuxt/
+      # dont ESLint et le typecheck ont besoin.
+      - name: Installation
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
