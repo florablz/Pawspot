@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from '#shared/schemas'
+
 const { register } = useAuth()
 
 const email = ref('')
@@ -44,8 +46,8 @@ async function onSubmit() {
             v-model="username"
             type="text"
             required
-            minlength="3"
-            maxlength="20"
+            :minlength="USERNAME_MIN_LENGTH"
+            :maxlength="USERNAME_MAX_LENGTH"
             autocomplete="username"
             class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
             placeholder="MonChien42"
@@ -70,10 +72,10 @@ async function onSubmit() {
             v-model="password"
             type="password"
             required
-            minlength="8"
+            :minlength="PASSWORD_MIN_LENGTH"
             autocomplete="new-password"
             class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
-            placeholder="8 caractères minimum"
+            :placeholder="`${PASSWORD_MIN_LENGTH} caractères minimum`"
           >
         </div>
 

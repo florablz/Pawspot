@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import type { AlertType, PlaceAlert } from '~/types/api'
+import { ALERT_DESCRIPTION_MAX_LENGTH, ALERT_TYPES_WITH_DESCRIPTION, type AlertType } from '#shared/schemas'
+import type { PlaceAlert } from '~/types/api'
 
 const props = defineProps<{ placeId: string }>()
 
 const { loggedIn } = useAuth()
 
 type NewAlertType = Exclude<AlertType, 'change'>
-
-const DESCRIPTION_MAX_LENGTH = 500
 
 /** Types proposés dans le formulaire (libellés courts, icône décorative). */
 const ALERT_OPTIONS: ReadonlyArray<{ type: NewAlertType, label: string, icon: string }> = [
@@ -37,7 +36,7 @@ const description = ref('')
 const submitting = ref(false)
 const errorMsg = ref('')
 
-const descriptionRequired = computed(() => alertType.value === 'info_change')
+const descriptionRequired = computed(() => !!alertType.value && ALERT_TYPES_WITH_DESCRIPTION.includes(alertType.value))
 
 async function loadAlerts() {
   loadingAlerts.value = true
@@ -150,11 +149,11 @@ watch(() => props.placeId, () => {
         v-model="description"
         class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/40 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
         rows="2"
-        :maxlength="DESCRIPTION_MAX_LENGTH"
+        :maxlength="ALERT_DESCRIPTION_MAX_LENGTH"
         :required="descriptionRequired"
         :placeholder="descriptionRequired ? 'Décris le changement…' : 'Précisions…'"
       />
-      <p class="mb-3 text-right text-[11px] text-white/50">{{ description.length }} / {{ DESCRIPTION_MAX_LENGTH }}</p>
+      <p class="mb-3 text-right text-[11px] text-white/50">{{ description.length }} / {{ ALERT_DESCRIPTION_MAX_LENGTH }}</p>
 
       <div v-if="errorMsg" class="mb-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-300" role="alert">{{ errorMsg }}</div>
 
