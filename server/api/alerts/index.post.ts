@@ -3,7 +3,7 @@ import { db } from '../../database'
 import { alerts } from '../../database/schema'
 import { readValidatedBodyOr400, requirePlace } from '../../utils/api'
 import { requireAuth } from '../../utils/auth'
-import { alertBodySchema } from '../../utils/bodySchemas'
+import { alertBodySchema } from '~~/shared/schemas'
 
 /**
  * `POST /api/alerts` `{ placeId, type, description? }` → alerte créée.

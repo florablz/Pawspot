@@ -1,11 +1,9 @@
 import { desc, eq } from 'drizzle-orm'
-import type { Place } from '~~/shared/types'
+import type { FavoritePlace } from '~~/shared/types'
 import { rowToPlace } from '~~/server/services/places'
 import { db } from '../../database'
 import { favorites, places } from '../../database/schema'
 import { requireAuth } from '../../utils/auth'
-
-export type FavoritePlace = Place & { favoritedAt: string }
 
 /** `GET /api/favorites` → `FavoritePlace[]` (lieux complets, plus récents d'abord). */
 export default defineEventHandler(async (event): Promise<FavoritePlace[]> => {
