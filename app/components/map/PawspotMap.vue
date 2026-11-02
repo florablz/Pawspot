@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type * as Leaflet from 'leaflet'
 import type { PawspotPlace, MapCenter } from '~/types/places'
 
 const props = defineProps<{
@@ -15,10 +16,10 @@ const emit = defineEmits<{
 }>()
 
 const mapEl = ref<HTMLElement | null>(null)
-let map: any = null
-let markersLayer: any = null
-let userMarker: any = null
-let L: any = null
+let map: Leaflet.Map | null = null
+let markersLayer: Leaflet.LayerGroup | null = null
+let userMarker: Leaflet.Marker | null = null
+let L: typeof Leaflet | null = null
 
 const categoryColors: Record<string, string> = {
   park: '#66BB6A',
@@ -40,13 +41,13 @@ const categoryIcons: Record<string, string> = {
   vet: '\u{1FA7A}',
 }
 
-function createCircleIcon(color: string, emoji: string, selected = false) {
+function createCircleIcon(lib: typeof Leaflet, color: string, emoji: string, selected = false): Leaflet.DivIcon {
   const size = selected ? 44 : 36
   const border = selected ? '3px solid #ffffff' : '2px solid rgba(255,255,255,0.3)'
   const shadow = selected
     ? '0 0 16px rgba(255,255,255,0.3), 0 2px 8px rgba(0,0,0,0.4)'
     : '0 2px 8px rgba(0,0,0,0.4)'
-  return L.divIcon({
+  return lib.divIcon({
     className: '',
     html: `<div style="
       width:${size}px;height:${size}px;
@@ -65,8 +66,8 @@ function createCircleIcon(color: string, emoji: string, selected = false) {
   })
 }
 
-function createUserIcon() {
-  return L.divIcon({
+function createUserIcon(lib: typeof Leaflet): Leaflet.DivIcon {
+  return lib.divIcon({
     className: '',
     html: `<div style="position:relative;width:18px;height:18px;">
       <div style="
@@ -101,7 +102,7 @@ const renderMarkers = () => {
     const color = categoryColors[place.category] || '#8D6E63'
     const emoji = categoryIcons[place.category] || '\u{1F4CD}'
     const isSelected = props.selectedPlace?.id === place.id
-    const icon = createCircleIcon(color, emoji, isSelected)
+    const icon = createCircleIcon(L, color, emoji, isSelected)
 
     L.marker([place.lat, place.lon], { icon })
       .on('click', () => emit('select-place', place))
@@ -116,7 +117,7 @@ const updateUserMarker = () => {
     userMarker.setLatLng([props.latitude, props.longitude])
   } else {
     userMarker = L.marker([props.latitude, props.longitude], {
-      icon: createUserIcon(),
+      icon: createUserIcon(L),
       zIndexOffset: 1000,
     }).addTo(map)
   }
@@ -134,19 +135,20 @@ onMounted(async () => {
   const startLng = props.longitude ?? 2.3
   const startZoom = props.latitude != null ? 14 : 6
 
-  map = L.map(mapEl.value, { zoomControl: true })
+  const leafletMap = L.map(mapEl.value, { zoomControl: true })
     .setView([startLat, startLng], startZoom)
+  map = leafletMap
 
   // Standard light map (OpenStreetMap default)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
-  }).addTo(map)
+  }).addTo(leafletMap)
 
-  map.on('moveend', () => {
-    const c = map.getCenter()
+  leafletMap.on('moveend', () => {
+    const c = leafletMap.getCenter()
     emit('update:center', { lat: c.lat, lng: c.lng })
-    emit('update:zoom', map.getZoom())
+    emit('update:zoom', leafletMap.getZoom())
   })
 
   // ResizeObserver for layout shifts

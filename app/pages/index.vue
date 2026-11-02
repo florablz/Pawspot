@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { PawspotPlace, MapCenter, CategoryFilter } from '~/types/places'
+import type { PawspotPlace, MapCenter, CategoryFilter, CategoryKey } from '~/types/places'
 
-const { latitude, longitude, loading, error, getLocation } = useUserLocation()
+const { latitude, longitude, loading, getLocation } = useUserLocation()
 const { places, fetching, searchError, fetchPlaces, searchByName, retry, shouldShowSearchHere } = usePlacesSearch()
 const { loggedIn } = useAuth()
 const { checkFavorite, toggleFavorite, isFavorited } = useFavorites()
@@ -392,7 +392,9 @@ function clearSearch() {
           </div>
 
           <!-- Dog policy badge -->
-          <div v-if="selectedPlace" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+          <div
+            v-if="selectedPlace"
+            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
             :class="{
               'bg-paw-green-700/30 text-paw-green-400': selectedPlace.dogPolicy === 'all_day',
               'bg-paw-blue-700/30 text-paw-blue-300': selectedPlace.dogPolicy === 'night_only',
@@ -401,7 +403,8 @@ function clearSearch() {
               'bg-paw-white/10 text-white/70': selectedPlace.dogPolicy === 'unknown',
             }">
             <span class="text-sm">{{ selectedPlace.dogPolicy === 'night_only' ? '🌙' : '🐕' }}</span>
-            <span class="text-xs font-medium"
+            <span
+              class="text-xs font-medium"
               :class="selectedPlace.dogPolicy === 'all_day' ? 'capitalize' : ''">
               {{ dogPolicyText(selectedPlace) }}
             </span>

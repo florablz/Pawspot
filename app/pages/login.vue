@@ -12,8 +12,8 @@ async function onSubmit() {
   try {
     await login(email.value, password.value)
     navigateTo('/')
-  } catch (err: any) {
-    errorMsg.value = err?.data?.message || err?.statusMessage || 'Email ou mot de passe incorrect'
+  } catch (err: unknown) {
+    errorMsg.value = getApiErrorMessage(err, 'Email ou mot de passe incorrect')
   } finally {
     submitting.value = false
   }

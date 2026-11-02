@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import type { PlaceReview } from '~/types/api'
+
 const props = defineProps<{ placeId: string }>()
 
-const { user, loggedIn } = useAuth()
+const { loggedIn } = useAuth()
 
-const reviews = ref<any[]>([])
+const reviews = ref<PlaceReview[]>([])
 const loadingReviews = ref(false)
 const showForm = ref(false)
 const rating = ref(0)
@@ -22,7 +24,7 @@ const averageRating = computed(() => {
 async function loadReviews() {
   loadingReviews.value = true
   try {
-    reviews.value = await $fetch<any[]>(`/api/reviews/${props.placeId}`)
+    reviews.value = await $fetch<PlaceReview[]>(`/api/reviews/${props.placeId}`)
   } catch { /* ignore */ } finally {
     loadingReviews.value = false
   }
@@ -53,7 +55,7 @@ async function submit() {
   errorMsg.value = ''
   submitting.value = true
   try {
-    const review = await $fetch<any>('/api/reviews', {
+    const review = await $fetch<PlaceReview>('/api/reviews', {
       method: 'POST',
       body: {
         placeId: props.placeId,
@@ -67,8 +69,8 @@ async function submit() {
     rating.value = 0
     comment.value = ''
     photos.value = []
-  } catch (err: any) {
-    errorMsg.value = err?.data?.message || err?.statusMessage || 'Erreur'
+  } catch (err: unknown) {
+    errorMsg.value = getApiErrorMessage(err, 'Erreur')
   } finally {
     submitting.value = false
   }

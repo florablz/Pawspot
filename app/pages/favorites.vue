@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { PawspotPlace } from '~/types/places'
+import type { Favorite } from '~/types/api'
 
 const { loggedIn } = useAuth()
-const favorites = ref<any[]>([])
+const favorites = ref<Favorite[]>([])
 const loading = ref(true)
-const selectedFav = ref<any | null>(null)
+const selectedFav = ref<Favorite | null>(null)
 const placeDetail = ref<PawspotPlace | null>(null)
 const loadingDetail = ref(false)
 
@@ -21,13 +22,13 @@ const categoryIcons: Record<string, string> = {
 async function loadFavorites() {
   loading.value = true
   try {
-    favorites.value = await $fetch<any[]>('/api/favorites')
+    favorites.value = await $fetch<Favorite[]>('/api/favorites')
   } catch { /* ignore */ } finally {
     loading.value = false
   }
 }
 
-async function selectFav(fav: any) {
+async function selectFav(fav: Favorite) {
   selectedFav.value = fav
   loadingDetail.value = true
   try {
@@ -54,7 +55,7 @@ async function selectFav(fav: any) {
   }
 }
 
-async function removeFavorite(fav: any) {
+async function removeFavorite(fav: Favorite) {
   try {
     await $fetch('/api/favorites', {
       method: 'POST',

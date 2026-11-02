@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import type { PlaceAlert } from '~/types/api'
+
 const props = defineProps<{ placeId: string }>()
 
 const { loggedIn } = useAuth()
 
-const alerts = ref<any[]>([])
+const alerts = ref<PlaceAlert[]>([])
 const loadingAlerts = ref(false)
 const showForm = ref(false)
 const alertType = ref<'closed' | 'change' | ''>('')
@@ -14,7 +16,7 @@ const errorMsg = ref('')
 async function loadAlerts() {
   loadingAlerts.value = true
   try {
-    alerts.value = await $fetch<any[]>(`/api/alerts/${props.placeId}`)
+    alerts.value = await $fetch<PlaceAlert[]>(`/api/alerts/${props.placeId}`)
   } catch { /* ignore */ } finally {
     loadingAlerts.value = false
   }
@@ -32,7 +34,7 @@ async function submit() {
   errorMsg.value = ''
   submitting.value = true
   try {
-    const alert = await $fetch<any>('/api/alerts', {
+    const alert = await $fetch<PlaceAlert>('/api/alerts', {
       method: 'POST',
       body: {
         placeId: props.placeId,
@@ -44,8 +46,8 @@ async function submit() {
     showForm.value = false
     alertType.value = ''
     description.value = ''
-  } catch (err: any) {
-    errorMsg.value = err?.data?.message || err?.statusMessage || 'Erreur'
+  } catch (err: unknown) {
+    errorMsg.value = getApiErrorMessage(err, 'Erreur')
   } finally {
     submitting.value = false
   }
