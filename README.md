@@ -100,11 +100,11 @@ server/             Back Nitro
   api/              Routes d'API (/api/…)
   database/         Schéma Drizzle, connexion et migrations
   utils/            Utilitaires serveur (auth…)
-shared/             Types et schémas (Zod) partagés entre front et back (à venir)
+shared/             Types, schémas (Zod) et utilitaires partagés entre front et back
 scripts/            Scripts de maintenance (migrations, données de démo)
 tests/              Tests Vitest
-  unit/server/      Tests du back (routes d'API, utilitaires)
-  unit/app/         Tests du front (composables, utilitaires)
+  unit/server/      Tests du back (routes d'API, base, service des lieux, shared/) — environnement Node
+  unit/app/         Tests du front (composants, composables, utilitaires) — environnement happy-dom
   fixtures/         Données figées (réponses Overpass…) utilisées par les tests
 public/             Fichiers statiques (logo, favicon…)
 ```

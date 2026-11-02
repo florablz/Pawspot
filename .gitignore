@@ -41,3 +41,6 @@ tmp_*.json
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# Cache de Vitest
+/.vitest
