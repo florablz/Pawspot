@@ -1,96 +1,107 @@
-import type { PawspotPlace, MapCenter } from '~/types/places'
+import { parseBbox, type Bbox } from '#shared/geo'
+import type { Place, PlacesResponse } from '#shared/types'
+import type { MapView } from '~/types/map'
 
-// Rayon utilisé par la recherche par nom (filtre côté client).
-const NAME_SEARCH_RADIUS = 15000
-// Écart (en degrés, ~1 km) en deçà duquel on réutilise les lieux déjà chargés pour la recherche par nom.
-const NAME_SEARCH_REUSE_DISTANCE = 0.01
+/** En dessous de ce zoom, le serveur ne rafraîchit pas les lieux (`zoomTooLow`). */
+export const MIN_PLACES_ZOOM = 11
+/** Nombre maximal de relances automatiques quand la réponse est `incomplete`. */
+export const MAX_INCOMPLETE_RETRIES = 3
 
-function distance(a: MapCenter, b: MapCenter): number {
-  const dlat = a.lat - b.lat
-  const dlng = a.lng - b.lng
-  return Math.sqrt(dlat * dlat + dlng * dlng)
+/** Tolérance (degrés) pour considérer qu'une emprise est contenue dans une autre. */
+const BBOX_EPSILON = 1e-6
+
+function bboxContains(outer: Bbox, inner: Bbox): boolean {
+  return inner.minLon >= outer.minLon - BBOX_EPSILON
+    && inner.minLat >= outer.minLat - BBOX_EPSILON
+    && inner.maxLon <= outer.maxLon + BBOX_EPSILON
+    && inner.maxLat <= outer.maxLat + BBOX_EPSILON
 }
 
+/**
+ * Chargement des lieux par emprise (`GET /api/places?bbox=…&zoom=…`).
+ * Seule la dernière requête lancée écrit le résultat ; une réponse `incomplete`
+ * est relancée automatiquement (au plus `MAX_INCOMPLETE_RETRIES` fois).
+ */
 export const usePlacesSearch = () => {
-  const places = ref<PawspotPlace[]>([])
+  const places = ref<Place[]>([])
   const fetching = ref(false)
   const searchError = ref<string | null>(null)
-  const searchCenter = ref<MapCenter | null>(null)
+  const stale = ref(false)
+  const zoomTooLow = ref(false)
+  const truncated = ref(false)
+  const incomplete = ref(false)
+  /** Vue de la carte des derniers lieux affichés (`null` tant que rien n'est chargé). */
+  const loadedView = ref<MapView | null>(null)
 
-  // Seule la dernière requête lancée a le droit d'écrire le résultat :
-  // une réponse plus ancienne (ou une erreur plus ancienne) est ignorée.
   let latestRequest = 0
   let controller: AbortController | null = null
-  // Lieux chargés dans un rayon de 15 km pour la recherche par nom, réutilisés tant que la carte ne bouge pas.
-  let namePool: { center: MapCenter, places: PawspotPlace[] } | null = null
-  let lastAction: (() => Promise<void>) | null = null
+  let lastView: MapView | null = null
 
-  async function request(lat: number, lng: number, radius: number, apply: (data: PawspotPlace[]) => void) {
+  function apply(data: PlacesResponse, view: MapView) {
+    places.value = data.places
+    stale.value = data.stale
+    zoomTooLow.value = data.zoomTooLow
+    truncated.value = data.truncated
+    incomplete.value = data.incomplete
+    loadedView.value = view
+  }
+
+  async function fetchPlaces(view: MapView) {
+    lastView = view
     const id = ++latestRequest
     controller?.abort()
-    controller = new AbortController()
+    const current = new AbortController()
+    controller = current
     fetching.value = true
     searchError.value = null
+    const query = { bbox: view.bbox, zoom: Math.round(view.zoom) }
     try {
-      const data = await $fetch<{ places: PawspotPlace[] }>('/api/places', {
-        query: { lat, lon: lng, radius },
-        signal: controller.signal,
-      })
-      if (id !== latestRequest) return
-      apply(data.places)
-    } catch (err: unknown) {
+      for (let attempt = 0; ; attempt++) {
+        const data = await $fetch<PlacesResponse>('/api/places', { query, signal: current.signal })
+        if (id !== latestRequest) return
+        // Les lieux déjà reçus s'affichent pendant la relance.
+        apply(data, view)
+        if (!data.incomplete || attempt >= MAX_INCOMPLETE_RETRIES) break
+      }
+    }
+    catch (err: unknown) {
       if (id !== latestRequest) return
       searchError.value = getApiErrorMessage(err, 'Impossible de charger les lieux.')
-    } finally {
+    }
+    finally {
       if (id === latestRequest) fetching.value = false
     }
   }
 
-  async function fetchPlaces(lat: number, lng: number, radius = 3000) {
-    lastAction = () => fetchPlaces(lat, lng, radius)
-    await request(lat, lng, radius, (data) => {
-      places.value = data
-      searchCenter.value = { lat, lng }
-    })
-  }
-
-  async function searchByName(query: string, lat: number, lng: number) {
-    lastAction = () => searchByName(query, lat, lng)
-    const q = query.toLowerCase()
-    const filter = (pool: PawspotPlace[]) => pool.filter(p => p.name.toLowerCase().includes(q))
-
-    if (namePool && distance(namePool.center, { lat, lng }) < NAME_SEARCH_REUSE_DISTANCE) {
-      // Annule une éventuelle requête en cours : le résultat local est le plus récent.
-      latestRequest++
-      controller?.abort()
-      fetching.value = false
-      searchError.value = null
-      places.value = filter(namePool.places)
-      return
-    }
-
-    await request(lat, lng, NAME_SEARCH_RADIUS, (data) => {
-      namePool = { center: { lat, lng }, places: data }
-      places.value = filter(data)
-    })
-  }
-
   async function retry() {
-    if (lastAction) await lastAction()
+    if (lastView) await fetchPlaces(lastView)
   }
 
-  function shouldShowSearchHere(currentCenter: MapCenter | null): boolean {
-    if (!searchCenter.value || !currentCenter) return false
-    return distance(currentCenter, searchCenter.value) > 0.005
+  /**
+   * Faut-il proposer « Rechercher dans cette zone » ? Oui si la vue sort de
+   * l'emprise chargée, ou si l'on a zoomé alors que la réponse précédente
+   * était limitée (`zoomTooLow` / `truncated`).
+   */
+  function shouldShowSearchHere(view: MapView | null): boolean {
+    const loaded = loadedView.value
+    if (!view || !loaded) return false
+    if ((zoomTooLow.value || truncated.value) && view.zoom > loaded.zoom) return true
+    const outer = parseBbox(loaded.bbox)
+    const inner = parseBbox(view.bbox)
+    if (!outer || !inner) return view.bbox !== loaded.bbox
+    return !bboxContains(outer, inner)
   }
 
   return {
     places,
     fetching,
     searchError,
-    searchCenter,
+    stale,
+    zoomTooLow,
+    truncated,
+    incomplete,
+    loadedView,
     fetchPlaces,
-    searchByName,
     retry,
     shouldShowSearchHere,
   }
