@@ -1,3 +1,10 @@
+// Codes de GeolocationPositionError (le message du navigateur n'est pas en français).
+const GEOLOCATION_ERRORS: Record<number, string> = {
+  1: 'Géolocalisation refusée.',
+  2: 'Position indisponible.',
+  3: 'La localisation a pris trop de temps.',
+}
+
 export const useUserLocation = () => {
   const latitude = ref<number | null>(null)
   const longitude = ref<number | null>(null)
@@ -7,12 +14,13 @@ export const useUserLocation = () => {
   const getLocation = () =>
     new Promise<void>((resolve, reject) => {
       if (!navigator.geolocation) {
-        error.value = "La geolocalisation n'est pas supportee par ce navigateur."
+        error.value = 'La géolocalisation n\'est pas prise en charge par ce navigateur.'
         reject(error.value)
         return
       }
 
       loading.value = true
+      error.value = null
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -22,7 +30,7 @@ export const useUserLocation = () => {
           resolve()
         },
         (err) => {
-          error.value = err.message
+          error.value = GEOLOCATION_ERRORS[err.code] ?? 'Position indisponible.'
           loading.value = false
           reject(err)
         },

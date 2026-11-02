@@ -104,3 +104,8 @@
   opacity: 0.5;
   filter: saturate(1.8) contrast(1.1) sepia(0.35) hue-rotate(-10deg);
 }
+
+/* Contrôles de zoom sous la barre de recherche et les filtres */
+.leaflet-top.leaflet-left {
+  top: 124px;
+}

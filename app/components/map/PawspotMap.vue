@@ -1,55 +1,49 @@
 <script setup lang="ts">
 import type * as Leaflet from 'leaflet'
-import type { PawspotPlace, MapCenter } from '~/types/places'
+import { CATEGORIES, DEFAULT_CATEGORY_COLOR, DEFAULT_CATEGORY_ICON } from '#shared/categories'
+import type { Place } from '#shared/types'
+import type { MapView } from '~/types/map'
 
 const props = defineProps<{
   latitude: number | null
   longitude: number | null
-  places: PawspotPlace[]
-  selectedPlace?: PawspotPlace | null
+  places: Place[]
+  selectedPlace?: Place | null
 }>()
 
 const emit = defineEmits<{
-  'update:center': [center: MapCenter]
-  'update:zoom': [zoom: number]
-  'select-place': [place: PawspotPlace]
+  'update:view': [view: MapView]
+  'select-place': [place: Place]
 }>()
+
+/** Vue « France entière » (géolocalisation refusée ou en attente). */
+const FRANCE_VIEW = { lat: 46.6, lng: 2.4, zoom: 6 }
+const USER_ZOOM = 14
 
 const mapEl = ref<HTMLElement | null>(null)
 let map: Leaflet.Map | null = null
 let markersLayer: Leaflet.LayerGroup | null = null
 let userMarker: Leaflet.Marker | null = null
 let L: typeof Leaflet | null = null
+let resizeObserver: ResizeObserver | null = null
 
-const categoryColors: Record<string, string> = {
-  park: '#66BB6A',
-  dog_park: '#43A047',
-  beach: '#4FC3F7',
-  restaurant: '#FF9100',
-  bar: '#FF6D00',
-  cafe: '#FFB74D',
-  vet: '#E65100',
-}
-
-const categoryIcons: Record<string, string> = {
-  park: '\u{1F333}',
-  dog_park: '\u{1F43E}',
-  beach: '\u{1F30A}',
-  restaurant: '\u{1F37D}\uFE0F',
-  bar: '\u{1F37A}',
-  cafe: '\u2615',
-  vet: '\u{1FA7A}',
-}
-
-function createCircleIcon(lib: typeof Leaflet, color: string, emoji: string, selected = false): Leaflet.DivIcon {
+function createPlaceIcon(lib: typeof Leaflet, place: Place, selected: boolean): Leaflet.DivIcon {
+  const category = CATEGORIES[place.category]
+  const color = category?.color ?? DEFAULT_CATEGORY_COLOR
+  const emoji = category?.icon ?? DEFAULT_CATEGORY_ICON
+  const tone = DOG_STATUS_TONE[place.dogStatus] ?? 'gray'
+  const dot = DOG_STATUS_MARKER_DOT[tone]
   const size = selected ? 44 : 36
+  const dotSize = selected ? 18 : 16
   const border = selected ? '3px solid #ffffff' : '2px solid rgba(255,255,255,0.3)'
   const shadow = selected
     ? '0 0 16px rgba(255,255,255,0.3), 0 2px 8px rgba(0,0,0,0.4)'
     : '0 2px 8px rgba(0,0,0,0.4)'
+  // Uniquement des valeurs de configuration dans ce HTML (aucune donnée du lieu).
   return lib.divIcon({
     className: '',
     html: `<div style="
+      position:relative;
       width:${size}px;height:${size}px;
       background:${color};
       border:${border};
@@ -59,7 +53,16 @@ function createCircleIcon(lib: typeof Leaflet, color: string, emoji: string, sel
       box-shadow:${shadow};
       cursor:pointer;
       transition:all 0.2s;
-    ">${emoji}</div>`,
+    "><span aria-hidden="true">${emoji}</span><span aria-hidden="true" style="
+      position:absolute;top:-4px;right:-4px;
+      width:${dotSize}px;height:${dotSize}px;
+      border-radius:50%;
+      background:${dot.color};
+      color:${DOG_STATUS_MARKER_GLYPH_COLOR[tone]};
+      border:2px solid #2C1810;
+      font:700 ${dotSize - 7}px/1 system-ui,sans-serif;
+      display:flex;align-items:center;justify-content:center;
+    ">${dot.glyph}</span></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
@@ -99,14 +102,16 @@ const renderMarkers = () => {
   }
 
   for (const place of props.places) {
-    const color = categoryColors[place.category] || '#8D6E63'
-    const emoji = categoryIcons[place.category] || '\u{1F4CD}'
     const isSelected = props.selectedPlace?.id === place.id
-    const icon = createCircleIcon(L, color, emoji, isSelected)
-
-    L.marker([place.lat, place.lon], { icon })
+    const marker = L.marker([place.lat, place.lon], {
+      icon: createPlaceIcon(L, place, isSelected),
+      title: place.name,
+      zIndexOffset: isSelected ? 500 : 0,
+    })
       .on('click', () => emit('select-place', place))
       .addTo(markersLayer)
+    // Nom + statut chien pour les lecteurs d'écran (le marqueur est focusable au clavier).
+    marker.getElement()?.setAttribute('aria-label', `${place.name}. ${dogStatusAccessibleText(place.dogStatus, place.dogStatusSource)}`)
   }
 }
 
@@ -131,9 +136,10 @@ onMounted(async () => {
   const leaflet = await import('leaflet')
   L = leaflet.default
 
-  const startLat = props.latitude ?? 46.6
-  const startLng = props.longitude ?? 2.3
-  const startZoom = props.latitude != null ? 14 : 6
+  const located = props.latitude != null && props.longitude != null
+  const startLat = located ? props.latitude! : FRANCE_VIEW.lat
+  const startLng = located ? props.longitude! : FRANCE_VIEW.lng
+  const startZoom = located ? USER_ZOOM : FRANCE_VIEW.zoom
 
   const leafletMap = L.map(mapEl.value, { zoomControl: true })
     .setView([startLat, startLng], startZoom)
@@ -145,47 +151,55 @@ onMounted(async () => {
     maxZoom: 19,
   }).addTo(leafletMap)
 
-  leafletMap.on('moveend', () => {
-    const c = leafletMap.getCenter()
-    emit('update:center', { lat: c.lat, lng: c.lng })
-    emit('update:zoom', leafletMap.getZoom())
-  })
+  leafletMap.on('moveend', emitView)
 
-  // ResizeObserver for layout shifts
-  const ro = new ResizeObserver(() => map?.invalidateSize())
-  ro.observe(mapEl.value)
-  onBeforeUnmount(() => ro.disconnect())
+  // Recalcule la taille de la carte quand la mise en page change.
+  resizeObserver = new ResizeObserver(() => map?.invalidateSize())
+  resizeObserver.observe(mapEl.value)
 
   updateUserMarker()
   renderMarkers()
+  emitView()
 })
 
-watch(() => props.places, () => renderMarkers(), { deep: true })
+function currentView(): MapView | null {
+  if (!map) return null
+  const c = map.getCenter()
+  return {
+    center: { lat: c.lat, lng: c.lng },
+    zoom: Math.round(map.getZoom()),
+    bbox: map.getBounds().toBBoxString(),
+  }
+}
+
+function emitView() {
+  const view = currentView()
+  if (view) emit('update:view', view)
+}
+
+watch(() => props.places, () => renderMarkers())
 watch(() => props.selectedPlace, () => renderMarkers())
 
-watch(
-  () => [props.latitude, props.longitude],
-  () => {
-    if (!map || props.latitude == null || props.longitude == null) return
-    updateUserMarker()
-    map.flyTo([props.latitude, props.longitude], 14, { duration: 1 })
-  },
-)
+// Le déplacement vers la position est piloté par la page (`flyTo`).
+watch(() => [props.latitude, props.longitude], () => updateUserMarker())
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
   map?.remove()
+  map = null
 })
 
 defineExpose({
-  flyTo(lat: number, lng: number, zoom?: number) {
-    map?.flyTo([lat, lng], zoom ?? map.getZoom(), { duration: 0.8 })
+  /** `false` si la carte n'est pas encore prête. */
+  flyTo(lat: number, lng: number, zoom?: number): boolean {
+    if (!map) return false
+    map.flyTo([lat, lng], zoom ?? map.getZoom(), { duration: 0.8 })
+    return true
   },
-  getZoom(): number {
-    return map?.getZoom() ?? 14
-  },
+  getView: currentView,
 })
 </script>
 
 <template>
-  <div ref="mapEl" style="width:100%;height:100%" />
+  <div ref="mapEl" style="width:100%;height:100%" role="region" aria-label="Carte des lieux" />
 </template>

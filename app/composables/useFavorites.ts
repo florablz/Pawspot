@@ -1,47 +1,44 @@
-import type { PawspotPlace } from '~/types/places'
+import type { FavoriteToggleResponse } from '~/types/api'
+
+/** Ids de lieux à mettre dans une URL (`osm:node:123` → `osm%3Anode%3A123`). */
+export function favoriteUrl(placeId: string): string {
+  return `/api/favorites/${encodeURIComponent(placeId)}`
+}
 
 export const useFavorites = () => {
   const favoritedIds = useState<Set<string>>('favorite-ids', () => new Set())
 
-  async function checkFavorite(placeId: string) {
-    try {
-      const data = await $fetch<{ favorited: boolean }>(`/api/favorites/check/${placeId}`)
-      if (data.favorited) {
-        favoritedIds.value.add(placeId)
-      } else {
-        favoritedIds.value.delete(placeId)
-      }
-    } catch { /* ignore */ }
+  function setLocal(placeId: string, favorited: boolean) {
+    const next = new Set(favoritedIds.value)
+    if (favorited) next.add(placeId)
+    else next.delete(placeId)
+    favoritedIds.value = next
   }
 
-  async function toggleFavorite(place: PawspotPlace) {
+  async function checkFavorite(placeId: string) {
     try {
-      const data = await $fetch<{ favorited: boolean }>('/api/favorites', {
-        method: 'POST',
-        body: {
-          placeId: place.id,
-          placeName: place.name,
-          placeLat: place.lat,
-          placeLon: place.lon,
-          placeCategory: place.category,
-        },
-      })
-      if (data.favorited) {
-        favoritedIds.value.add(place.id)
-      } else {
-        favoritedIds.value.delete(place.id)
-      }
-      // Force reactivity on the Set
-      favoritedIds.value = new Set(favoritedIds.value)
-      return data.favorited
-    } catch {
-      return false
+      const data = await $fetch<{ favorited: boolean }>(`/api/favorites/check/${encodeURIComponent(placeId)}`)
+      setLocal(placeId, data.favorited)
     }
+    catch { /* l'étoile garde son état actuel */ }
+  }
+
+  /** Ajoute (POST) ou retire (DELETE) un favori. Lève l'erreur de l'API en cas d'échec. */
+  async function setFavorite(placeId: string, favorited: boolean): Promise<boolean> {
+    const data = favorited
+      ? await $fetch<FavoriteToggleResponse>('/api/favorites', { method: 'POST', body: { placeId } })
+      : await $fetch<FavoriteToggleResponse>(favoriteUrl(placeId), { method: 'DELETE' })
+    setLocal(placeId, data.favorited)
+    return data.favorited
+  }
+
+  function toggleFavorite(placeId: string): Promise<boolean> {
+    return setFavorite(placeId, !favoritedIds.value.has(placeId))
   }
 
   function isFavorited(placeId: string) {
     return favoritedIds.value.has(placeId)
   }
 
-  return { favoritedIds, checkFavorite, toggleFavorite, isFavorited }
+  return { favoritedIds, checkFavorite, setFavorite, toggleFavorite, isFavorited }
 }
