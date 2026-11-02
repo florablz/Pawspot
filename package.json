@@ -13,8 +13,8 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "nuxi typecheck",
-    "test": "vitest run --passWithNoTests",
+    "typecheck": "nuxi typecheck && vue-tsc --noEmit -p tests/unit/server && vue-tsc --noEmit -p tests/unit/app",
+    "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/db-seed.ts"
@@ -38,6 +38,7 @@
     "@vue/test-utils": "^2.5.1",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.14.0",
+    "h3": "^1.15.6",
     "happy-dom": "^21.0.4",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
