@@ -1,121 +1,94 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createError, isError } from 'h3'
 import overpassFixture from '../../../fixtures/overpass/paris-mixte.json'
+import type { PlacesResponse } from '../../../../shared/types'
+import { fetchMock, overpassDown, overpassResponse, setupApi } from './_setup'
+import type { ApiBench } from './_setup'
 
-interface FakeEvent { query: Record<string, string> }
-interface PlaceResult {
-  id: string
-  name: string
-  lat: number
-  lon: number
-  category: string
-  dog?: string
-  dogPolicy: string
-  dogPolicySource?: string
-  address?: string
-  image?: string
-}
-type Handler = (event: FakeEvent) => Promise<{ places: PlaceResult[] }>
+interface ApiErrorBody { statusCode: number; message: string }
 
-// Le handler n'utilise de l'événement que getQuery : on évite un serveur Nuxt
-// complet en fournissant les auto-imports Nitro en globaux (createError/isError réels de h3).
-const fetchMock = vi.fn<typeof fetch>()
-let handler: Handler
+let api: ApiBench
+const PARIS = 'bbox=2.30,48.85,2.35,48.88'
 
 beforeAll(async () => {
-  vi.stubGlobal('defineEventHandler', (fn: Handler) => fn)
-  vi.stubGlobal('getQuery', (event: FakeEvent) => event.query)
-  vi.stubGlobal('createError', createError)
-  vi.stubGlobal('isError', isError)
-  vi.stubGlobal('fetch', fetchMock)
-  handler = (await import('../../../../server/api/places.get')).default as unknown as Handler
+  api = await setupApi()
 })
 
 afterAll(() => {
   vi.unstubAllGlobals()
 })
 
-beforeEach(() => {
+beforeEach(async () => {
   fetchMock.mockReset()
+  await api.db.delete(api.schema.fetchedTiles)
 })
 
-const PARIS = { lat: '48.8566', lon: '2.3522' }
+describe('GET /api/places — validation', () => {
+  it.each([
+    ['sans bbox', 'zoom=14', 'Emprise (bbox) requise'],
+    ['bbox illisible', 'bbox=abc&zoom=14', 'Emprise invalide : attendu minLon,minLat,maxLon,maxLat'],
+    ['bbox à trois valeurs', 'bbox=2.3,48.8,2.4&zoom=14', 'Emprise invalide : attendu minLon,minLat,maxLon,maxLat'],
+    ['latitude hors bornes', 'bbox=2.3,48.8,2.4,95&zoom=14', 'Emprise invalide : attendu minLon,minLat,maxLon,maxLat'],
+    ['zoom non numérique', `${PARIS}&zoom=abc`, 'Zoom invalide'],
+    ['zoom décimal', `${PARIS}&zoom=12.5`, 'Le zoom doit être un entier'],
+    ['zoom trop grand', `${PARIS}&zoom=30`, 'Zoom invalide'],
+  ])('refuse une requête %s (400, message en français) sans appeler Overpass', async (_label, query, message) => {
+    const res = await api.request<ApiErrorBody>('GET', `/api/places?${query}`)
+    expect(res.status).toBe(400)
+    expect(res.body).toMatchObject({ statusCode: 400, message })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
 
-async function callAndCatch(event: FakeEvent) {
-  try {
-    await handler(event)
-  }
-  catch (err) {
-    return err as { statusCode: number, statusMessage: string }
-  }
-  throw new Error('le handler aurait dû lever une erreur')
-}
-
-describe('GET /api/places', () => {
-  it('refuse une latitude ou longitude invalide (400) sans appeler Overpass', async () => {
-    const err = await callAndCatch({ query: { lat: 'abc', lon: '2.35' } })
-    expect(err.statusCode).toBe(400)
+describe('GET /api/places — réponses', () => {
+  it('zoom < 11 : zoomTooLow, sans appel à Overpass', async () => {
+    const res = await api.request<PlacesResponse>('GET', `/api/places?${PARIS}&zoom=10`)
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ stale: false, zoomTooLow: true, incomplete: false, truncated: false })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it.each([429, 502, 503, 504])('renvoie 503 quand Overpass répond %i (saturé)', async (status) => {
-    fetchMock.mockResolvedValueOnce(new Response('busy', { status }))
-    const err = await callAndCatch({ query: PARIS })
-    expect(err.statusCode).toBe(503)
-    expect(err.statusMessage).toBe('Le service de cartes est saturé, réessayez dans quelques instants')
-  })
-
-  it('renvoie 502 pour une autre erreur amont (500)', async () => {
-    fetchMock.mockResolvedValueOnce(new Response('oops', { status: 500 }))
-    const err = await callAndCatch({ query: PARIS })
-    expect(err.statusCode).toBe(502)
-    expect(err.statusMessage).toBe('Le service de cartes est indisponible')
-  })
-
-  it('renvoie 502 sans détail interne pour une erreur réseau', async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError('getaddrinfo ENOTFOUND overpass-api.de'))
-    const err = await callAndCatch({ query: PARIS })
-    expect(err.statusCode).toBe(502)
-    expect(err.statusMessage).toBe('Le service de cartes est indisponible')
-    expect(JSON.stringify(err)).not.toContain('ENOTFOUND')
-  })
-
-  it('renvoie 502 pour un JSON invalide', async () => {
-    fetchMock.mockResolvedValueOnce(new Response('<html>pas du json</html>', { status: 200 }))
-    const err = await callAndCatch({ query: PARIS })
-    expect(err.statusCode).toBe(502)
-  })
-
-  it('envoie la requête à Overpass avec un User-Agent identifiable et le rayon demandé', async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({ elements: [] }))
-    await handler({ query: { ...PARIS, radius: '1500' } })
-
+  it('zoom 14 : interroge Overpass et renvoie une PlacesResponse complète', async () => {
+    fetchMock.mockResolvedValue(overpassResponse(overpassFixture.elements))
+    const res = await api.request<PlacesResponse>('GET', `/api/places?${PARIS}&zoom=14`)
+    expect(res.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0]!
-    expect(url).toBe('https://overpass-api.de/api/interpreter')
-    expect((init?.headers as Record<string, string>)['User-Agent']).toMatch(/^PawSpot\//)
-    expect(String(init?.body)).toContain('around:1500,48.8566,2.3522')
+    expect(Object.keys(res.body).sort()).toEqual(['incomplete', 'places', 'stale', 'truncated', 'zoomTooLow'])
+    expect(res.body).toMatchObject({ stale: false, zoomTooLow: false, incomplete: false, truncated: false })
+
+    // dog=no exclu, plage de Nice hors emprise.
+    expect(res.body.places.map(p => p.id).sort()).toEqual(['osm:node:1001', 'osm:node:1004', 'osm:way:2002'])
+    const flore = res.body.places.find(p => p.id === 'osm:node:1001')!
+    expect(flore).toMatchObject({
+      source: 'osm',
+      name: 'Café de Flore',
+      hasName: true,
+      category: 'cafe',
+      dogStatus: 'osm_yes',
+      osmDogPolicy: 'all_day',
+      hasTerrace: true,
+      status: 'active',
+      verified: true,
+      address: '172 Boulevard Saint-Germain, 75006 Paris',
+    })
+    expect(typeof flore.updatedAt).toBe('string')
   })
 
-  it('transforme la réponse Overpass en lieux PawSpot', async () => {
-    fetchMock.mockResolvedValueOnce(Response.json(overpassFixture))
-    const { places } = await handler({ query: PARIS })
+  it('Overpass en panne : 200 avec les données en base et stale: true', async () => {
+    // Le cache contient déjà les lieux (test précédent) ; on vide les tuiles pour forcer un rafraîchissement.
+    overpassDown()
+    const res = await api.request<PlacesResponse>('GET', `/api/places?${PARIS}&zoom=14`)
+    expect(res.status).toBe(200)
+    expect(res.body.stale).toBe(true)
+    expect(res.body.zoomTooLow).toBe(false)
+    expect(res.body.places.length).toBeGreaterThan(0)
+    expect(res.text).not.toMatch(/overpass|HTTP 504/i)
+  })
 
-    // dog=no et l'élément sans coordonnées sont exclus.
-    expect(places.map(p => p.id)).toEqual(['node-1001', 'way-2002', 'node-1004', 'node-1005'])
-
-    const flore = places[0]!
-    expect(flore).toMatchObject({
-      name: 'Café de Flore',
-      category: 'cafe',
-      dog: 'yes',
-      dogPolicy: 'all_day',
-      address: '172 Boulevard Saint-Germain 75006 Paris',
-      image: 'https://commons.wikimedia.org/wiki/Special:FilePath/Cafe_de_Flore.jpg?width=600',
-    })
-
-    expect(places[1]).toMatchObject({ name: 'Parc Monceau', category: 'park', lat: 48.8796, lon: 2.3095, dogPolicy: 'restricted' })
-    expect(places[2]).toMatchObject({ name: 'Lieu sans nom', category: 'restaurant', dogPolicy: 'unknown', dog: undefined })
-    expect(places[3]).toMatchObject({ category: 'beach', dogPolicy: 'night_only' })
+  it('Overpass en erreur réseau : stale: true, jamais de 500', async () => {
+    fetchMock.mockRejectedValue(new TypeError('getaddrinfo ENOTFOUND overpass-api.de'))
+    const res = await api.request<PlacesResponse>('GET', `/api/places?${PARIS}&zoom=14`)
+    expect(res.status).toBe(200)
+    expect(res.body.stale).toBe(true)
+    expect(res.text).not.toContain('ENOTFOUND')
   })
 })
