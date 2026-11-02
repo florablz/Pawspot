@@ -1,3 +1,6 @@
+import { PAWSPOT_USER_AGENT } from '../utils/http'
+import { parseDogPolicy, resolveImage } from '../utils/dogPolicy'
+
 interface OverpassElement {
   type: 'node' | 'way' | 'relation'
   id: number
@@ -7,53 +10,10 @@ interface OverpassElement {
   tags?: Record<string, string>
 }
 
+const OVERPASS_TIMEOUT_MS = 35_000
+
 interface OverpassResponse {
   elements?: OverpassElement[]
-}
-
-function resolveImage(tags: Record<string, string>): string | undefined {
-  // Direct image URL (http/https), but convert commons wiki/File: links to FilePath
-  if (tags.image?.startsWith('http')) {
-    const wikiFileMatch = tags.image.match(/commons\.wikimedia\.org\/wiki\/File:(.+)/)
-    if (wikiFileMatch) {
-      return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(wikiFileMatch[1]!)}?width=600`
-    }
-    return tags.image
-  }
-
-  // Wikimedia Commons: only handle "File:xxx" format (not "Category:")
-  if (tags.wikimedia_commons?.startsWith('File:')) {
-    const file = tags.wikimedia_commons.slice(5).replace(/ /g, '_')
-    return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}?width=600`
-  }
-
-  return undefined
-}
-
-function parseDogPolicy(tags: Record<string, string>): { policy: 'all_day' | 'night_only' | 'no' | 'restricted' | 'unknown'; source: string | undefined } {
-  const dogTag = tags.dog?.toLowerCase()
-  const dogConditional = tags['dog:conditional'] || tags['access:conditional'] || ''
-
-  if (dogTag === 'no') {
-    return { policy: 'no', source: 'no' }
-  }
-
-  if (dogTag && dogTag !== 'no') {
-    return { policy: 'all_day', source: dogTag }
-  }
-
-  if (dogConditional) {
-    const lower = dogConditional.toLowerCase()
-    if (lower.includes('night') || lower.includes('22:00') || lower.includes('23:00') || lower.includes('00:00') || lower.includes('1:00') || lower.includes('2:00') || lower.includes('3:00') || lower.includes('4:00') || lower.includes('5:00') || lower.includes('6:00')) {
-      return { policy: 'night_only', source: dogConditional }
-    }
-    if (lower.includes('no')) {
-      return { policy: 'restricted', source: dogConditional }
-    }
-    return { policy: 'all_day', source: dogConditional }
-  }
-
-  return { policy: 'unknown', source: undefined }
 }
 
 export default defineEventHandler(async (event) => {
@@ -93,20 +53,37 @@ export default defineEventHandler(async (event) => {
     out center tags;
   `
 
-  const response = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body,
-    headers: { 'Content-Type': 'text/plain' },
-  })
-
-  if (!response.ok) {
+  let data: OverpassResponse
+  try {
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body,
+      headers: {
+        'Content-Type': 'text/plain',
+        'User-Agent': PAWSPOT_USER_AGENT,
+      },
+      signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
+    })
+    if (!response.ok) {
+      // 429 / 502 / 504 : Overpass saturé ; autres codes : erreur amont.
+      const busy = response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504
+      throw createError({
+        statusCode: busy ? 503 : 502,
+        statusMessage: busy
+          ? 'Le service de cartes est saturé, réessayez dans quelques instants'
+          : 'Le service de cartes est indisponible',
+      })
+    }
+    data = await response.json() as OverpassResponse
+  }
+  catch (err) {
+    if (isError(err)) throw err
+    // Erreur réseau, délai dépassé ou JSON invalide : pas de détail interne.
     throw createError({
-      statusCode: response.status,
-      statusMessage: 'Erreur Overpass API',
+      statusCode: 502,
+      statusMessage: 'Le service de cartes est indisponible',
     })
   }
-
-  const data = await response.json() as OverpassResponse
 
   const places = (data.elements || []).map((el) => {
     const tags: Record<string, string> = el.tags || {}
