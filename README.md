@@ -48,9 +48,15 @@ Les lieux viennent d'**OpenStreetMap** (API Overpass). La communauté peut ajout
 
 ## Comptes de démo
 
-<!-- TODO (agent donnees) : lister ici les comptes créés par `npm run db:seed` (email + mot de passe de test, rôle). Jamais de vrai mot de passe. -->
+`npm run db:seed` (après `npm run db:migrate`) crée ces comptes de test, avec quelques avis, favoris et alertes sur des lieux fictifs à Paris (identifiants `demo-*`). Le script est relançable sans créer de doublons.
 
-_À compléter : les comptes de test créés par `npm run db:seed` seront listés ici._
+| Email | Pseudo | Mot de passe | Rôle |
+| --- | --- | --- | --- |
+| `alice@demo.pawspot.fr` | `alice_demo` | `demo1234` | utilisateur |
+| `bruno@demo.pawspot.fr` | `bruno_demo` | `demo1234` | utilisateur |
+| `chloe@demo.pawspot.fr` | `chloe_demo` | `demo1234` | utilisateur |
+
+Mots de passe de démonstration uniquement : ne jamais lancer le seed sur la base de production.
 
 ## Scripts npm
 
