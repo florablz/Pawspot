@@ -2,7 +2,7 @@ import { db } from '../../database'
 import { reviews } from '../../database/schema'
 import { readValidatedBodyOr400, requirePlace } from '../../utils/api'
 import { requireAuth } from '../../utils/auth'
-import { reviewBodySchema } from '../../utils/bodySchemas'
+import { reviewBodySchema } from '~~/shared/schemas'
 
 /**
  * `POST /api/reviews` `{ placeId, rating, comment?, photos? }` → avis créé.

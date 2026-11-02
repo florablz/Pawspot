@@ -3,7 +3,7 @@ import { db } from '../../database'
 import { users } from '../../database/schema'
 import { apiError, readValidatedBodyOr400 } from '../../utils/api'
 import { createSession, setSessionCookie, verifyPassword, verifyPasswordAgainstDummy } from '../../utils/auth'
-import { loginBodySchema } from '../../utils/bodySchemas'
+import { loginBodySchema } from '~~/shared/schemas'
 
 /**
  * `POST /api/auth/login` `{ email, password }` → `{ id, email, username, avatarUrl }`
