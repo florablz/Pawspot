@@ -9,10 +9,18 @@ import overpassFixture from '../../../fixtures/overpass/paris-mixte.json'
 import type { Database } from '../../../../server/database'
 import * as schema from '../../../../server/database/schema'
 import {
+  ELEMENT_DEADLINE_MS,
   MAX_REFRESH_TILES,
+  OVERPASS_CIRCUIT_PAUSE_MS,
+  OverpassCircuit,
+  OverpassError,
+  REFRESH_DEADLINE_CACHED_MS,
+  REFRESH_DEADLINE_EMPTY_MS,
+  defaultOverpassCircuit,
   ensurePlace,
   getPlacesInBbox,
   recomputeDogStatus,
+  resetOverpassCircuit,
 } from '../../../../server/services/places'
 import type { OverpassElement, PlacesDeps } from '../../../../server/services/places'
 import { PAWSPOT_USER_AGENT } from '../../../../server/utils/http'
@@ -31,6 +39,8 @@ const ELEMENTS = overpassFixture.elements as unknown as OverpassElement[]
 
 let client: Client
 let db: Database
+/** Disjoncteur neuf à chaque test (celui du processus garderait les pauses d'un test à l'autre). */
+let circuit: OverpassCircuit
 const fetchMock = vi.fn<typeof fetch>()
 
 function overpassOk(elements: OverpassElement[] = ELEMENTS) {
@@ -38,7 +48,7 @@ function overpassOk(elements: OverpassElement[] = ELEMENTS) {
 }
 
 function deps(now: Date = T0, extra: Partial<PlacesDeps> = {}): PlacesDeps {
-  return { db, fetch: fetchMock, now: () => now, overpassEndpoints: ENDPOINTS, overpassTimeoutMs: 1000, ...extra }
+  return { db, fetch: fetchMock, now: () => now, overpassEndpoints: ENDPOINTS, overpassTimeoutMs: 1000, overpassCircuit: circuit, ...extra }
 }
 
 const ids = (list: { id: string }[]) => list.map(p => p.id).sort()
@@ -52,9 +62,12 @@ beforeEach(async () => {
   db = drizzle(client, { schema })
   await migrate(db, { migrationsFolder: MIGRATIONS })
   fetchMock.mockReset()
+  circuit = new OverpassCircuit()
+  resetOverpassCircuit()
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   client.close()
 })
 
@@ -143,6 +156,7 @@ describe('getPlacesInBbox', () => {
   })
 
   it('deux instances en échec : données en base + stale, sans exception', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: T0 })
     fetchMock.mockResolvedValueOnce(overpassOk())
     await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps())
 
@@ -158,6 +172,11 @@ describe('getPlacesInBbox', () => {
     expect((await placeRow('osm:way:2002'))?.status).toBe('active')
     fetchMock.mockReset()
     fetchMock.mockResolvedValueOnce(overpassOk())
+    // Juste après : les deux instances sont en pause, le cache est servi en stale sans appel.
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+    // Fin de la pause : la tuile, restée périmée, est rafraîchie.
+    vi.advanceTimersByTime(OVERPASS_CIRCUIT_PAUSE_MS)
     expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -298,6 +317,182 @@ describe('ensurePlace', () => {
   it('Overpass injoignable → OverpassError', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 504 }))
     await expect(ensurePlace('osm:node:1001', deps())).rejects.toMatchObject({ name: 'OverpassError' })
+  })
+})
+
+describe('disjoncteur Overpass', () => {
+  /** Emprise jamais chargée, loin de Paris (Lyon). */
+  const LYON: Bbox = { minLon: 4.83, minLat: 45.75, maxLon: 4.86, maxLat: 45.77 }
+  const FLORE = ELEMENTS.find(e => e.id === 1001)!
+  const partial = () => new Response(JSON.stringify({ elements: [], remark: 'runtime error: Query run out of memory' }), { status: 200 })
+  /** `fetch` qui ne répond jamais et ignore le signal d'annulation. */
+  const neverAnswers = () => new Promise<Response>(() => {})
+
+  /** Lance l'appel et indique s'il s'est terminé (pour les faux minuteurs). */
+  function track<T>(promise: Promise<T>) {
+    const state = { settled: false, promise }
+    promise.then(() => (state.settled = true), () => (state.settled = true))
+    return state
+  }
+
+  async function seedParis() {
+    fetchMock.mockResolvedValueOnce(overpassOk())
+    await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps())
+    fetchMock.mockReset()
+  }
+
+  it('après un échec des deux instances, l\'appel suivant renvoie stale sans appeler fetch', async () => {
+    await seedParis()
+    fetchMock.mockResolvedValue(new Response('', { status: 503 }))
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    fetchMock.mockClear()
+    const result = await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.stale).toBe(true)
+    expect(result.places).toHaveLength(3)
+  })
+
+  it('la pause dure 2 minutes, puis Overpass est de nouveau interrogé', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: T0 })
+    await seedParis()
+    fetchMock.mockResolvedValue(new Response('', { status: 500 }))
+    await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk())
+
+    vi.advanceTimersByTime(OVERPASS_CIRCUIT_PAUSE_MS - 1000)
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(1000)
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('un délai dépassé sur une emprise en cache n\'empêche pas un essai plus long, et un succès referme la pause', async () => {
+    await seedParis()
+    // Emprise en cache (10 s, 5 s par instance) : les deux instances expirent.
+    fetchMock.mockRejectedValue(new DOMException('délai', 'TimeoutError'))
+    const slow = deps(after(8), { overpassTimeoutMs: 30_000 })
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, slow)).stale).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    // Emprise vide (25 s, 12,5 s par instance) : essai plus long permis, l'instance principale répond.
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk([]))
+    expect((await getPlacesInBbox({ bbox: LYON, zoom: 14 }, slow)).stale).toBe(false)
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual([ENDPOINTS[0]])
+
+    // Pause refermée sur l'instance principale : l'emprise en cache est de nouveau rafraîchie.
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk())
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, slow)).stale).toBe(false)
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual([ENDPOINTS[0]])
+  })
+
+  it('un résultat partiel (runtime error) ne met pas l\'instance en pause', async () => {
+    await seedParis()
+    fetchMock.mockImplementation(async () => partial())
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk())
+    expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8)))).stale).toBe(false)
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual([ENDPOINTS[0]])
+  })
+
+  it('tuiles déjà chargées : délai total de 10 s, puis le cache en stale', async () => {
+    await seedParis()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: T0 })
+    fetchMock.mockImplementation(neverAnswers)
+    const call = track(getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8), { overpassTimeoutMs: 60_000 })))
+
+    await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_CACHED_MS - 1)
+    expect(call.settled).toBe(false)
+    // 5 s par instance : la seconde a été essayée.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(call.settled).toBe(true)
+    const result = await call.promise
+    expect(result.stale).toBe(true)
+    expect(result.places).toHaveLength(3)
+  })
+
+  it('tuile jamais chargée : délai total de 25 s, puis liste vide en stale', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: T0 })
+    fetchMock.mockImplementation(neverAnswers)
+    const call = track(getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(T0, { overpassTimeoutMs: 60_000 })))
+
+    await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_CACHED_MS)
+    expect(call.settled).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_EMPTY_MS - REFRESH_DEADLINE_CACHED_MS - 1)
+    expect(call.settled).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(call.settled).toBe(true)
+    expect(await call.promise).toMatchObject({ places: [], stale: true })
+    expect(await db.$count(schema.fetchedTiles)).toBe(0)
+  })
+
+  it('ensurePlace : délai total de 10 s', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: T0 })
+    fetchMock.mockImplementation(neverAnswers)
+    const call = track(ensurePlace('osm:node:1001', deps(T0, { overpassTimeoutMs: 60_000 })))
+    call.promise.catch(() => {})
+    await vi.advanceTimersByTimeAsync(ELEMENT_DEADLINE_MS - 1)
+    expect(call.settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(call.promise).rejects.toBeInstanceOf(OverpassError)
+  })
+
+  it('ensurePlace avec les deux instances en pause : OverpassError immédiate, sans fetch', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 504 }))
+    await expect(ensurePlace('osm:node:1001', deps())).rejects.toBeInstanceOf(OverpassError)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk([FLORE]))
+    const error = await ensurePlace('osm:node:1001', deps()).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OverpassError)
+    expect((error as OverpassError).attempts).toEqual([
+      'overpass-1.test: en pause après un échec récent',
+      'overpass-2.test: en pause après un échec récent',
+    ])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('HTTP 400 (requête refusée) ne met pas l\'instance en pause', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 400 }))
+    await expect(ensurePlace('osm:node:1001', deps())).rejects.toBeInstanceOf(OverpassError)
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk([FLORE]))
+    expect(await ensurePlace('osm:node:1001', deps())).toMatchObject({ id: 'osm:node:1001' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('overpassCircuitPauseMs: 0 désactive le disjoncteur', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 504 }))
+    const noPause = deps(T0, { overpassCircuitPauseMs: 0 })
+    await expect(ensurePlace('osm:node:1001', noPause)).rejects.toBeInstanceOf(OverpassError)
+    await expect(ensurePlace('osm:node:1001', noPause)).rejects.toBeInstanceOf(OverpassError)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
+  it('sans disjoncteur injecté, celui du processus est utilisé et resetOverpassCircuit l\'oublie', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 504 }))
+    const shared = deps(T0, { overpassCircuit: undefined })
+    await expect(ensurePlace('osm:node:1001', shared)).rejects.toBeInstanceOf(OverpassError)
+    expect(defaultOverpassCircuit.isOpen(ENDPOINTS[0]!, 1000, Date.now())).toBe(true)
+    expect(circuit.isOpen(ENDPOINTS[0]!, 1000, Date.now())).toBe(false)
+
+    resetOverpassCircuit()
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk([FLORE]))
+    expect(await ensurePlace('osm:node:1001', shared)).toMatchObject({ id: 'osm:node:1001' })
   })
 })
 

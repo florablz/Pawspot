@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { REVIEW_PHOTO_MAX_LENGTH } from '../../../../server/utils/bodySchemas'
+import { REVIEW_PHOTO_MAX_LENGTH } from '~~/shared/schemas'
 import { fetchMock, setupApi } from './_setup'
 import type { ApiBench } from './_setup'
 

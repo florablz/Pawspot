@@ -10,10 +10,12 @@
  *   encodés passent par le même chemin que dans Nitro.
  * - Auto-imports Nitro (`defineEventHandler`, `readBody`, `setCookie`…, et les
  *   fonctions de `server/utils/auth.ts`) : fournis en globaux.
- * - Overpass : `fetch` global simulé (`fetchMock`), aucun appel réseau.
+ * - Overpass : `fetch` global simulé (`fetchMock`), aucun appel réseau. Le
+ *   disjoncteur du processus est remis à zéro avant chaque test : une pause
+ *   ouverte par un test (Overpass en panne) ne court-circuite pas le suivant.
  */
 import { fileURLToPath } from 'node:url'
-import { vi } from 'vitest'
+import { beforeEach, vi } from 'vitest'
 import * as h3 from 'h3'
 import type { EventHandler } from 'h3'
 import { defaultHandler } from 'nitropack/runtime/internal/error/prod'
@@ -23,6 +25,12 @@ import type * as Schema from '../../../../server/database/schema'
 const MIGRATIONS = fileURLToPath(new URL('../../../../server/database/migrations', import.meta.url))
 
 export const fetchMock = vi.fn<typeof fetch>()
+
+beforeEach(async () => {
+  // Import paresseux : rien n'est chargé avant que `setupApi` ait fixé DATABASE_URL.
+  const { resetOverpassCircuit } = await import('../../../../server/services/places')
+  resetOverpassCircuit()
+})
 
 /** Routes montées : [méthode, chemin h3, module]. Imports explicites (les noms de fichiers contiennent des crochets). */
 const ROUTES = [
