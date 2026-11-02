@@ -25,7 +25,10 @@ import type { CommunitySignals } from './mapping'
 import { buildOverpassBboxQuery, buildOverpassElementQuery, runOverpassQuery } from './overpass'
 import type { OverpassDeps, OverpassElement } from './overpass'
 
-export { OverpassError, OVERPASS_ENDPOINTS, OVERPASS_TIMEOUT_MS, buildOverpassBboxQuery, runOverpassQuery } from './overpass'
+export {
+  OverpassCircuit, OverpassError, OVERPASS_CIRCUIT_PAUSE_MS, OVERPASS_DEADLINE_MS, OVERPASS_ENDPOINTS, OVERPASS_TIMEOUT_MS,
+  buildOverpassBboxQuery, defaultOverpassCircuit, resetOverpassCircuit, runOverpassQuery,
+} from './overpass'
 export type { OverpassElement, OverpassDeps } from './overpass'
 export { elementToPlaceRow, rowToPlace, buildAddress } from './mapping'
 
@@ -39,10 +42,27 @@ export const MAX_REFRESH_TILES = 16
 export const MAX_COVERING_TILES = 64
 /** Nombre maximal de lieux renvoyés par `getPlacesInBbox`. */
 export const MAX_PLACES_PER_RESPONSE = 2000
+/**
+ * Délai total du rafraîchissement quand toutes les tuiles à rafraîchir ont déjà été
+ * chargées une fois (des lieux, même anciens, sont en base) : mieux vaut afficher
+ * vite le cache en `stale` que faire attendre. 10 s = 5 s par instance au plus.
+ */
+export const REFRESH_DEADLINE_CACHED_MS = 10_000
+/**
+ * Délai total quand au moins une tuile n'a jamais été chargée : sans Overpass la
+ * carte resterait vide à cet endroit, on attend donc plus longtemps (12,5 s par instance).
+ */
+export const REFRESH_DEADLINE_EMPTY_MS = 25_000
+/** Délai total de la lecture d'un seul élément (`ensurePlace`) : petite requête, 5 s par instance. */
+export const ELEMENT_DEADLINE_MS = 10_000
 
 export interface PlacesDeps extends OverpassDeps {
   db?: Database
   now?: () => Date
+  /** Remplace `REFRESH_DEADLINE_CACHED_MS`. */
+  refreshDeadlineCachedMs?: number
+  /** Remplace `REFRESH_DEADLINE_EMPTY_MS`. */
+  refreshDeadlineEmptyMs?: number
 }
 
 async function getDb(deps: PlacesDeps): Promise<Database> {
@@ -196,18 +216,23 @@ async function refreshRange(db: Database, range: TileRange, deps: PlacesDeps): P
 }
 
 async function refreshTiles(db: Database, covering: TileRange, center: { lat: number; lon: number }, now: Date, deps: PlacesDeps): Promise<RefreshResult> {
-  const fresh = await db.select({ x: fetchedTiles.x, y: fetchedTiles.y, fetchedAt: fetchedTiles.fetchedAt })
+  const known = await db.select({ x: fetchedTiles.x, y: fetchedTiles.y, fetchedAt: fetchedTiles.fetchedAt })
     .from(fetchedTiles)
     .where(and(
       eq(fetchedTiles.z, covering.z),
       between(fetchedTiles.x, covering.minX, covering.maxX),
       between(fetchedTiles.y, covering.minY, covering.maxY),
-      gte(fetchedTiles.fetchedAt, new Date(now.getTime() - TILE_TTL_MS)),
     ))
-  const freshKeys = new Set(fresh.map(t => tileKey({ z: covering.z, x: t.x, y: t.y })))
+  const freshSince = now.getTime() - TILE_TTL_MS
+  const knownKeys = new Set(known.map(t => tileKey({ z: covering.z, x: t.x, y: t.y })))
+  const freshKeys = new Set(known.filter(t => t.fetchedAt.getTime() >= freshSince).map(t => tileKey({ z: covering.z, x: t.x, y: t.y })))
   const stale = tilesInRange(covering).filter(t => !freshKeys.has(tileKey(t)))
   const range = pickRefreshRange(stale, center)
   if (!range) return { failed: false, remaining: 0 }
+  const cached = tilesInRange(range).every(t => knownKeys.has(tileKey(t)))
+  const deadlineMs = cached
+    ? deps.refreshDeadlineCachedMs ?? REFRESH_DEADLINE_CACHED_MS
+    : deps.refreshDeadlineEmptyMs ?? REFRESH_DEADLINE_EMPTY_MS
 
   const key = `${range.z}/${range.minX}-${range.maxX}/${range.minY}-${range.maxY}`
   let inflight = inflightByDb.get(db)
@@ -215,7 +240,7 @@ async function refreshTiles(db: Database, covering: TileRange, center: { lat: nu
   const running = inflight
   let pending = running.get(key)
   if (!pending) {
-    pending = refreshRange(db, range, deps).finally(() => running.delete(key))
+    pending = refreshRange(db, range, { ...deps, overpassDeadlineMs: deadlineMs }).finally(() => running.delete(key))
     running.set(key, pending)
   }
   const ok = await pending
@@ -246,7 +271,9 @@ export async function selectPlacesInBbox(bbox: Bbox, deps: PlacesDeps = {}, limi
  * - zoom < 11, ou plus de 64 tuiles z12 couvrant l'emprise → pas d'Overpass, `zoomTooLow: true` ;
  * - sinon, les tuiles z12 absentes ou chargées il y a plus de 7 jours sont rafraîchies
  *   (au plus 16 par appel, les plus proches du centre ; `incomplete: true` s'il en reste) ;
- * - échec d'Overpass sur les deux instances → données en base + `stale: true` (pas d'exception).
+ * - échec d'Overpass sur les deux instances → données en base + `stale: true` (pas d'exception) ;
+ *   délai total borné à 10 s si les tuiles ont déjà été chargées une fois, 25 s sinon ;
+ *   juste après un échec, le disjoncteur répond `stale` sans attendre (voir `overpass.ts`).
  * Une erreur de base de données, elle, est propagée.
  */
 export async function getPlacesInBbox(params: { bbox: Bbox; zoom: number }, deps: PlacesDeps = {}): Promise<PlacesResponse> {
@@ -281,14 +308,18 @@ export async function getPlaceById(id: string, deps: PlacesDeps = {}): Promise<P
  * - présent en base → renvoyé ;
  * - id OSM absent → lu sur Overpass (un seul élément), mis en cache s'il est éligible ;
  * - sinon (id `user:` inconnu, élément introuvable ou non éligible) → `null` (404 côté route).
- * @throws OverpassError si Overpass est injoignable (503 côté route).
+ * @throws OverpassError si Overpass est injoignable ou en pause après un échec récent
+ *   (immédiat dans ce cas ; 503 côté route). Délai total : `ELEMENT_DEADLINE_MS`.
  */
 export async function ensurePlace(id: string, deps: PlacesDeps = {}): Promise<Place | null> {
   const existing = await getPlaceById(id, deps)
   if (existing) return existing
   const parsed = parsePlaceId(id)
   if (!parsed || parsed.source !== 'osm') return null
-  const elements = await runOverpassQuery(buildOverpassElementQuery(parsed.osmType, parsed.osmId), deps)
+  const elements = await runOverpassQuery(buildOverpassElementQuery(parsed.osmType, parsed.osmId), {
+    ...deps,
+    overpassDeadlineMs: deps.overpassDeadlineMs ?? ELEMENT_DEADLINE_MS,
+  })
   const rows = await upsertOsmElements(elements.filter(el => osmPlaceId(el.type, el.id) === id), deps)
   return rows.length ? getPlaceById(id, deps) : null
 }
