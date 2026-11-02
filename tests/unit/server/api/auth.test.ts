@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { setupApi } from './_setup'
@@ -61,9 +62,7 @@ describe('POST /api/auth/register', () => {
     expect(res.body.statusCode).toBe(400)
   })
 
-  // Bug : la route lit `body.email` sans vérifier que le corps existe ; un corps
-  // vide lève une TypeError et renvoie 500 au lieu de 400.
-  it.fails('corps vide : 400 (et non 500)', async () => {
+  it('corps vide : 400 (et non 500)', async () => {
     const res = await register(undefined)
     expect(res.status).toBe(400)
   })
@@ -86,14 +85,31 @@ describe('POST /api/auth/login', () => {
       expect(res.sessionCookie).toBeUndefined()
     }
     expect(wrong.body.message).toBe(unknown.body.message)
+    expect(unknown.body.message).toBe('Email ou mot de passe incorrect')
+  })
+
+  it('email inconnu : un mot de passe est quand même comparé par bcrypt (pas de raccourci)', async () => {
+    const compare = vi.spyOn(bcrypt, 'compare')
+    try {
+      const res = await login({ email: 'inconnu@exemple.fr', password: PASSWORD })
+      expect(res.status).toBe(401)
+      expect(res.body.message).toBe('Email ou mot de passe incorrect')
+      expect(compare).toHaveBeenCalledTimes(1)
+      const [plain, hash] = compare.mock.calls[0]!
+      expect(plain).toBe(PASSWORD)
+      // Hash factice au même coût que les vrais (10).
+      expect(hash).toMatch(/^\$2[aby]\$10\$/)
+    }
+    finally {
+      compare.mockRestore()
+    }
   })
 
   it('champs manquants : 400', async () => {
     expect((await login({ email: CAMILLE.email })).status).toBe(400)
   })
 
-  // Même bug que pour l'inscription : corps vide → TypeError → 500.
-  it.fails('corps vide : 400 (et non 500)', async () => {
+  it('corps vide : 400 (et non 500)', async () => {
     const res = await login(undefined)
     expect(res.status).toBe(400)
   })
@@ -148,9 +164,7 @@ describe('session : me, déconnexion, expiration', () => {
 })
 
 describe('messages d\'erreur de l\'authentification', () => {
-  // Bug : messages sans accents (« Non authentifie », « caracteres », « deja utilise »),
-  // contraire à la règle « messages en français avec les accents ».
-  it.fails('portent leurs accents', async () => {
+  it('portent leurs accents', async () => {
     const unauthorized = await api.request<ApiErrorBody>('GET', '/api/favorites')
     const tooShort = await register({ ...CAMILLE, email: 'y@exemple.fr', username: 'ab' })
     const duplicate = await register(CAMILLE)
