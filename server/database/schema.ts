@@ -102,7 +102,7 @@ export const alerts = sqliteTable('alerts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   placeId: text('place_id').notNull().references(() => places.id),
   userId: integer('user_id').notNull().references(() => users.id),
-  type: text('type').notNull(), // 'closed' | 'change' (nouveaux types en Phase 3, §3.10)
+  type: text('type').notNull(), // AlertType de shared/schemas.ts : 'closed' | 'temporarily_closed' | 'dogs_not_allowed' | 'info_change' | 'change'
   description: text('description'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 }, t => [
