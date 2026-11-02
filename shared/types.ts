@@ -83,3 +83,6 @@ export interface PlacesResponse {
   /** Trop de lieux dans l'emprise : liste tronquée à la limite du serveur. */
   truncated: boolean
 }
+
+/** Élément de `GET /api/favorites` : le lieu complet et la date d'ajout (ISO). */
+export type FavoritePlace = Place & { favoritedAt: string }
