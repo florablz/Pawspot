@@ -12,13 +12,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Email et mot de passe requis' })
   }
 
-  const user = db.select().from(users).where(eq(users.email, email)).get()
+  const user = await db.select().from(users).where(eq(users.email, email)).get()
 
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     throw createError({ statusCode: 401, statusMessage: 'Email ou mot de passe incorrect' })
   }
 
-  const token = createSession(user.id)
+  const token = await createSession(user.id)
   setSessionCookie(event, token)
 
   return {

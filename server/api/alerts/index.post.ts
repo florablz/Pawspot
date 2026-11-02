@@ -2,7 +2,7 @@ import { db } from '../../database'
 import { alerts } from '../../database/schema'
 
 export default defineEventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = await requireAuth(event)
   const body = await readBody(event)
 
   const placeId = String(body.placeId || '')
@@ -19,15 +19,15 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Description requise pour un changement' })
   }
 
-  const result = db.insert(alerts).values({
+  const inserted = await db.insert(alerts).values({
     placeId,
     userId: user.id,
     type,
     description: description || null,
-  }).run()
+  }).returning({ id: alerts.id }).get()
 
   return {
-    id: Number(result.lastInsertRowid),
+    id: inserted.id,
     placeId,
     type,
     description,

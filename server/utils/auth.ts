@@ -16,15 +16,15 @@ export async function verifyPassword(plain: string, hash: string) {
   return bcrypt.compare(plain, hash)
 }
 
-export function createSession(userId: number) {
+export async function createSession(userId: number) {
   const id = nanoid(32)
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000)
-  db.insert(sessions).values({ id, userId, expiresAt }).run()
+  await db.insert(sessions).values({ id, userId, expiresAt })
   return id
 }
 
-export function deleteSession(token: string) {
-  db.delete(sessions).where(eq(sessions.id, token)).run()
+export async function deleteSession(token: string) {
+  await db.delete(sessions).where(eq(sessions.id, token))
 }
 
 export function setSessionCookie(event: H3Event, token: string) {
@@ -40,18 +40,18 @@ export function clearSessionCookie(event: H3Event) {
   deleteCookie(event, SESSION_COOKIE, { path: '/' })
 }
 
-export function getUserFromSession(event: H3Event) {
+export async function getUserFromSession(event: H3Event) {
   const token = getCookie(event, SESSION_COOKIE)
   if (!token) return null
 
-  const session = db.select().from(sessions).where(eq(sessions.id, token)).get()
+  const session = await db.select().from(sessions).where(eq(sessions.id, token)).get()
   if (!session || session.expiresAt < new Date()) {
-    if (session) deleteSession(token)
+    if (session) await deleteSession(token)
     clearSessionCookie(event)
     return null
   }
 
-  const user = db.select({
+  const user = await db.select({
     id: users.id,
     email: users.email,
     username: users.username,
@@ -62,8 +62,8 @@ export function getUserFromSession(event: H3Event) {
   return user || null
 }
 
-export function requireAuth(event: H3Event) {
-  const user = getUserFromSession(event)
+export async function requireAuth(event: H3Event) {
+  const user = await getUserFromSession(event)
   if (!user) {
     throw createError({ statusCode: 401, statusMessage: 'Non authentifie' })
   }

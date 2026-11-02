@@ -1,3 +1,16 @@
+interface OverpassElement {
+  type: 'node' | 'way' | 'relation'
+  id: number
+  lat?: number
+  lon?: number
+  center?: { lat: number; lon: number }
+  tags?: Record<string, string>
+}
+
+interface OverpassResponse {
+  elements?: OverpassElement[]
+}
+
 function resolveImage(tags: Record<string, string>): string | undefined {
   // Direct image URL (http/https), but convert commons wiki/File: links to FilePath
   if (tags.image?.startsWith('http')) {
@@ -93,10 +106,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const data = await response.json()
+  const data = await response.json() as OverpassResponse
 
-  const places = (data.elements || []).map((el: any) => {
-    const tags = el.tags || {}
+  const places = (data.elements || []).map((el) => {
+    const tags: Record<string, string> = el.tags || {}
     let category = 'park'
     if (tags.leisure === 'dog_park') category = 'dog_park'
     else if (tags.leisure === 'park') category = 'park'
@@ -133,7 +146,7 @@ export default defineEventHandler(async (event) => {
       cuisine: tags.cuisine || undefined,
       image: resolveImage(tags),
     }
-  }).filter((p: any) => p.lat && p.lon && p.dog !== 'no')
+  }).filter(p => p.lat && p.lon && p.dog !== 'no')
 
   return { places }
 })

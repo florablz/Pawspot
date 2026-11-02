@@ -1,7 +1,7 @@
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
   const token = getCookie(event, 'pawspot-session')
   if (token) {
-    deleteSession(token)
+    await deleteSession(token)
   }
   clearSessionCookie(event)
   return { ok: true }

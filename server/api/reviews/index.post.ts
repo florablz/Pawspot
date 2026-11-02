@@ -2,7 +2,7 @@ import { db } from '../../database'
 import { reviews } from '../../database/schema'
 
 export default defineEventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = await requireAuth(event)
   const body = await readBody(event)
 
   const placeId = String(body.placeId || '')
@@ -20,16 +20,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: '5 photos maximum' })
   }
 
-  const result = db.insert(reviews).values({
+  const inserted = await db.insert(reviews).values({
     placeId,
     userId: user.id,
     rating,
     comment: comment || null,
     photos: photos.length ? JSON.stringify(photos) : null,
-  }).run()
+  }).returning({ id: reviews.id }).get()
 
   return {
-    id: Number(result.lastInsertRowid),
+    id: inserted.id,
     placeId,
     rating,
     comment,

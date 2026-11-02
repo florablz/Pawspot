@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'placeId requis' })
   }
 
-  const rows = db
+  const rows = await db
     .select({
       id: reviews.id,
       placeId: reviews.placeId,
