@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import type { PawspotPlace } from '~/types/places'
+import type { PlacesResponse } from '#shared/types'
 import { getApiErrorMessage } from '~/utils/apiError'
-import { usePlacesSearch } from '~/composables/usePlacesSearch'
+import { MAX_INCOMPLETE_RETRIES, usePlacesSearch } from '~/composables/usePlacesSearch'
+import type { MapView } from '~/types/map'
+import { deferred, makePlace, placesResponse } from '../_helpers'
 
 interface FetchOptions {
-  query: { lat: number, lon: number, radius: number }
+  query: { bbox: string, zoom: number }
   signal: AbortSignal
 }
-type PlacesResponse = { places: PawspotPlace[] }
 
 // Le composable s'appuie sur les auto-imports Nuxt (ref, $fetch, getApiErrorMessage) :
 // on les fournit en globaux plutôt que de démarrer un environnement Nuxt complet.
@@ -25,43 +26,80 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function place(id: string, name: string): PawspotPlace {
-  return { id, name, lat: 48.8566, lon: 2.3522, category: 'park' }
+function view(bbox: string, zoom: number): MapView {
+  const [minLon, minLat, maxLon, maxLat] = bbox.split(',').map(Number) as [number, number, number, number]
+  return { center: { lat: (minLat + maxLat) / 2, lng: (minLon + maxLon) / 2 }, zoom, bbox }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
+const PARIS = view('2.30,48.84,2.40,48.88', 14)
+/** Contenue dans PARIS (zoom avant). */
+const PARIS_DEDANS = view('2.32,48.85,2.38,48.87', 15)
+/** Déborde de PARIS vers le nord-est. */
+const PARIS_DECALE = view('2.35,48.86,2.45,48.90', 14)
+const LYON = view('4.80,45.74,4.88,45.78', 14)
 
-const PARIS = { lat: 48.8566, lng: 2.3522 }
-// ~500 m de PARIS : sous le seuil de réutilisation (~1 km).
-const PARIS_PROCHE = { lat: 48.8606, lng: 2.3552 }
-// ~2,5 km de PARIS : au-delà du seuil.
-const PARIS_LOIN = { lat: 48.8766, lng: 2.3672 }
+const names = (search: ReturnType<typeof usePlacesSearch>) => search.places.value.map(p => p.name)
 
 describe('usePlacesSearch', () => {
+  describe('requête', () => {
+    it('appelle /api/places avec { bbox, zoom } et un zoom arrondi à l\'entier', async () => {
+      fetchMock.mockResolvedValue(placesResponse([]))
+      const search = usePlacesSearch()
+
+      await search.fetchPlaces({ ...PARIS, zoom: 13.6 })
+      await search.fetchPlaces({ ...PARIS, zoom: 12.4 })
+
+      expect(fetchMock.mock.calls[0]![0]).toBe('/api/places')
+      expect(fetchMock.mock.calls[0]![1].query).toEqual({ bbox: PARIS.bbox, zoom: 14 })
+      expect(fetchMock.mock.calls[1]![1].query).toEqual({ bbox: PARIS.bbox, zoom: 12 })
+    })
+
+    it('remplit places et loadedView, recopie stale / zoomTooLow / truncated / incomplete', async () => {
+      fetchMock.mockResolvedValueOnce(placesResponse([makePlace({ id: 'osm:node:1', name: 'Parc Monceau' })], {
+        stale: true, zoomTooLow: true, truncated: true,
+      }))
+      const search = usePlacesSearch()
+
+      await search.fetchPlaces(PARIS)
+
+      expect(names(search)).toEqual(['Parc Monceau'])
+      expect(search.loadedView.value).toEqual(PARIS)
+      expect(search.stale.value).toBe(true)
+      expect(search.zoomTooLow.value).toBe(true)
+      expect(search.truncated.value).toBe(true)
+      expect(search.incomplete.value).toBe(false)
+    })
+
+    it('remet les drapeaux à faux quand la réponse suivante est normale', async () => {
+      fetchMock
+        .mockResolvedValueOnce(placesResponse([], { stale: true, zoomTooLow: true, truncated: true }))
+        .mockResolvedValueOnce(placesResponse([]))
+      const search = usePlacesSearch()
+
+      await search.fetchPlaces(PARIS)
+      await search.fetchPlaces(LYON)
+
+      expect([search.stale.value, search.zoomTooLow.value, search.truncated.value]).toEqual([false, false, false])
+    })
+  })
+
   describe('requêtes concurrentes', () => {
-    it('n\'écrase pas la réponse la plus récente par une réponse plus ancienne', async () => {
+    it('la dernière requête gagne, même si l\'ancienne répond après', async () => {
       const first = deferred<PlacesResponse>()
       const second = deferred<PlacesResponse>()
       fetchMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
       const search = usePlacesSearch()
 
-      const p1 = search.fetchPlaces(PARIS.lat, PARIS.lng)
-      const p2 = search.fetchPlaces(PARIS_LOIN.lat, PARIS_LOIN.lng)
-      second.resolve({ places: [place('node-2', 'Récent')] })
+      const p1 = search.fetchPlaces(PARIS)
+      const p2 = search.fetchPlaces(LYON)
+      second.resolve(placesResponse([makePlace({ id: 'osm:node:2', name: 'Récent' })]))
       await p2
-      first.resolve({ places: [place('node-1', 'Ancien')] })
+      first.resolve(placesResponse([makePlace({ id: 'osm:node:1', name: 'Ancien' })], { stale: true }))
       await p1
 
-      expect(search.places.value.map(p => p.name)).toEqual(['Récent'])
-      expect(search.searchCenter.value).toEqual(PARIS_LOIN)
+      expect(names(search)).toEqual(['Récent'])
+      expect(search.loadedView.value).toEqual(LYON)
+      expect(search.stale.value).toBe(false)
     })
 
     it('ignore l\'erreur d\'une requête plus ancienne', async () => {
@@ -70,28 +108,28 @@ describe('usePlacesSearch', () => {
       fetchMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
       const search = usePlacesSearch()
 
-      const p1 = search.fetchPlaces(PARIS.lat, PARIS.lng)
-      const p2 = search.fetchPlaces(PARIS_LOIN.lat, PARIS_LOIN.lng)
-      second.resolve({ places: [place('node-2', 'Récent')] })
+      const p1 = search.fetchPlaces(PARIS)
+      const p2 = search.fetchPlaces(LYON)
+      second.resolve(placesResponse([makePlace({ id: 'osm:node:2', name: 'Récent' })]))
       await p2
       first.reject(new Error('aborted'))
       await p1
 
       expect(search.searchError.value).toBeNull()
-      expect(search.places.value.map(p => p.name)).toEqual(['Récent'])
+      expect(names(search)).toEqual(['Récent'])
     })
 
     it('annule le signal de la requête précédente', async () => {
       const first = deferred<PlacesResponse>()
-      fetchMock.mockReturnValueOnce(first.promise).mockResolvedValueOnce({ places: [] })
+      fetchMock.mockReturnValueOnce(first.promise).mockResolvedValueOnce(placesResponse([]))
       const search = usePlacesSearch()
 
-      const p1 = search.fetchPlaces(PARIS.lat, PARIS.lng)
-      await search.fetchPlaces(PARIS_LOIN.lat, PARIS_LOIN.lng)
+      const p1 = search.fetchPlaces(PARIS)
+      await search.fetchPlaces(LYON)
 
       expect(fetchMock.mock.calls[0]![1].signal.aborted).toBe(true)
       expect(fetchMock.mock.calls[1]![1].signal.aborted).toBe(false)
-      first.resolve({ places: [] })
+      first.resolve(placesResponse([]))
       await p1
     })
 
@@ -102,17 +140,85 @@ describe('usePlacesSearch', () => {
       const search = usePlacesSearch()
 
       expect(search.fetching.value).toBe(false)
-      const p1 = search.fetchPlaces(PARIS.lat, PARIS.lng)
-      const p2 = search.fetchPlaces(PARIS_LOIN.lat, PARIS_LOIN.lng)
+      const p1 = search.fetchPlaces(PARIS)
+      const p2 = search.fetchPlaces(LYON)
       expect(search.fetching.value).toBe(true)
 
-      first.resolve({ places: [] })
+      first.resolve(placesResponse([]))
       await p1
       expect(search.fetching.value).toBe(true)
 
-      second.resolve({ places: [] })
+      second.resolve(placesResponse([]))
       await p2
       expect(search.fetching.value).toBe(false)
+    })
+  })
+
+  describe('réponses incomplete', () => {
+    it(`relance la même requête, au plus ${MAX_INCOMPLETE_RETRIES} fois`, async () => {
+      expect(MAX_INCOMPLETE_RETRIES).toBe(3)
+      fetchMock.mockResolvedValue(placesResponse([makePlace({ id: 'osm:node:1', name: 'Partiel' })], { incomplete: true }))
+      const search = usePlacesSearch()
+
+      await search.fetchPlaces(PARIS)
+
+      expect(fetchMock).toHaveBeenCalledTimes(1 + MAX_INCOMPLETE_RETRIES)
+      for (const [, options] of fetchMock.mock.calls) expect(options.query).toEqual({ bbox: PARIS.bbox, zoom: 14 })
+      expect(search.incomplete.value).toBe(true)
+      expect(names(search)).toEqual(['Partiel'])
+      expect(search.fetching.value).toBe(false)
+    })
+
+    it('s\'arrête dès qu\'une réponse est complète', async () => {
+      fetchMock
+        .mockResolvedValueOnce(placesResponse([makePlace({ id: 'osm:node:1', name: 'A' })], { incomplete: true }))
+        .mockResolvedValueOnce(placesResponse([makePlace({ id: 'osm:node:1', name: 'A' }), makePlace({ id: 'osm:node:2', name: 'B' })]))
+      const search = usePlacesSearch()
+
+      await search.fetchPlaces(PARIS)
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(search.incomplete.value).toBe(false)
+      expect(names(search)).toEqual(['A', 'B'])
+    })
+
+    it('affiche les lieux déjà reçus pendant la relance', async () => {
+      const relance = deferred<PlacesResponse>()
+      fetchMock
+        .mockResolvedValueOnce(placesResponse([makePlace({ id: 'osm:node:1', name: 'Déjà là' })], { incomplete: true }))
+        .mockReturnValueOnce(relance.promise)
+      const search = usePlacesSearch()
+
+      const pending = search.fetchPlaces(PARIS)
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+      expect(names(search)).toEqual(['Déjà là'])
+      expect(search.fetching.value).toBe(true)
+      relance.resolve(placesResponse([]))
+      await pending
+    })
+
+    it('abandonne les relances quand une nouvelle requête part', async () => {
+      const relance = deferred<PlacesResponse>()
+      fetchMock
+        .mockResolvedValueOnce(placesResponse([], { incomplete: true }))
+        .mockReturnValueOnce(relance.promise)
+        .mockResolvedValueOnce(placesResponse([makePlace({ id: 'osm:node:9', name: 'Lyon' })]))
+      const search = usePlacesSearch()
+
+      const p1 = search.fetchPlaces(PARIS)
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      await search.fetchPlaces(LYON)
+      expect(fetchMock.mock.calls[1]![1].signal.aborted).toBe(true)
+
+      relance.resolve(placesResponse([], { incomplete: true }))
+      await p1
+
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(fetchMock.mock.calls[2]![1].query.bbox).toBe(LYON.bbox)
+      expect(names(search)).toEqual(['Lyon'])
+      expect(search.incomplete.value).toBe(false)
+      expect(search.loadedView.value).toEqual(LYON)
     })
   })
 
@@ -121,7 +227,7 @@ describe('usePlacesSearch', () => {
       fetchMock.mockRejectedValueOnce({ statusCode: 503, statusMessage: 'Le service de cartes est saturé, réessayez dans quelques instants' })
       const search = usePlacesSearch()
 
-      await expect(search.fetchPlaces(PARIS.lat, PARIS.lng)).resolves.toBeUndefined()
+      await expect(search.fetchPlaces(PARIS)).resolves.toBeUndefined()
 
       expect(search.searchError.value).toBe('Le service de cartes est saturé, réessayez dans quelques instants')
       expect(search.fetching.value).toBe(false)
@@ -132,38 +238,27 @@ describe('usePlacesSearch', () => {
       fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
       const search = usePlacesSearch()
 
-      await search.fetchPlaces(PARIS.lat, PARIS.lng)
+      await search.fetchPlaces(PARIS)
 
       expect(search.searchError.value).toBe('Impossible de charger les lieux.')
     })
 
-    it('retry() rejoue la dernière recherche autour d\'un point et efface l\'erreur', async () => {
+    it('retry() rejoue la dernière vue et efface l\'erreur', async () => {
       fetchMock
+        .mockResolvedValueOnce(placesResponse([]))
         .mockRejectedValueOnce(new TypeError('fetch failed'))
-        .mockResolvedValueOnce({ places: [place('node-1', 'Parc Monceau')] })
+        .mockResolvedValueOnce(placesResponse([makePlace({ id: 'osm:node:1', name: 'Parc de la Tête d\'Or' })]))
       const search = usePlacesSearch()
 
-      await search.fetchPlaces(PARIS.lat, PARIS.lng, 2000)
+      await search.fetchPlaces(PARIS)
+      await search.fetchPlaces(LYON)
+      expect(search.searchError.value).toBe('Impossible de charger les lieux.')
       await search.retry()
 
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(fetchMock.mock.calls[1]![1].query).toEqual({ lat: PARIS.lat, lon: PARIS.lng, radius: 2000 })
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(fetchMock.mock.calls[2]![1].query).toEqual({ bbox: LYON.bbox, zoom: 14 })
       expect(search.searchError.value).toBeNull()
-      expect(search.places.value.map(p => p.name)).toEqual(['Parc Monceau'])
-    })
-
-    it('retry() rejoue la dernière recherche par nom', async () => {
-      fetchMock
-        .mockRejectedValueOnce(new TypeError('fetch failed'))
-        .mockResolvedValueOnce({ places: [place('node-1', 'Café de Flore'), place('node-2', 'Parc Monceau')] })
-      const search = usePlacesSearch()
-
-      await search.searchByName('flore', PARIS.lat, PARIS.lng)
-      expect(search.searchError.value).toBe('Impossible de charger les lieux.')
-      await search.retry()
-
-      expect(fetchMock.mock.calls[1]![1].query).toEqual({ lat: PARIS.lat, lon: PARIS.lng, radius: 15000 })
-      expect(search.places.value.map(p => p.name)).toEqual(['Café de Flore'])
+      expect(names(search)).toEqual(['Parc de la Tête d\'Or'])
     })
 
     it('retry() sans recherche préalable ne fait rien', async () => {
@@ -173,76 +268,52 @@ describe('usePlacesSearch', () => {
     })
   })
 
-  describe('recherche par nom', () => {
-    const POOL = [place('node-1', 'Café de Flore'), place('node-2', 'Parc Monceau'), place('node-3', 'Bar du Parc')]
-
-    it('filtre sans tenir compte de la casse, dans un rayon de 15 km', async () => {
-      fetchMock.mockResolvedValueOnce({ places: POOL })
-      const search = usePlacesSearch()
-
-      await search.searchByName('PARC', PARIS.lat, PARIS.lng)
-
-      expect(fetchMock.mock.calls[0]![1].query.radius).toBe(15000)
-      expect(search.places.value.map(p => p.name)).toEqual(['Parc Monceau', 'Bar du Parc'])
-    })
-
-    it('ne fait qu\'un appel réseau pour des recherches successives à moins de 1 km', async () => {
-      fetchMock.mockResolvedValueOnce({ places: POOL })
-      const search = usePlacesSearch()
-
-      await search.searchByName('parc', PARIS.lat, PARIS.lng)
-      await search.searchByName('flore', PARIS_PROCHE.lat, PARIS_PROCHE.lng)
-
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      expect(search.places.value.map(p => p.name)).toEqual(['Café de Flore'])
-      expect(search.fetching.value).toBe(false)
-    })
-
-    it('relance un appel réseau au-delà de 1 km', async () => {
-      fetchMock
-        .mockResolvedValueOnce({ places: POOL })
-        .mockResolvedValueOnce({ places: [place('node-9', 'Parc des Buttes-Chaumont')] })
-      const search = usePlacesSearch()
-
-      await search.searchByName('parc', PARIS.lat, PARIS.lng)
-      await search.searchByName('parc', PARIS_LOIN.lat, PARIS_LOIN.lng)
-
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(search.places.value.map(p => p.name)).toEqual(['Parc des Buttes-Chaumont'])
-    })
-
-    it('un résultat local annule une requête en cours plus ancienne', async () => {
-      const pending = deferred<PlacesResponse>()
-      fetchMock.mockResolvedValueOnce({ places: POOL }).mockReturnValueOnce(pending.promise)
-      const search = usePlacesSearch()
-
-      await search.searchByName('parc', PARIS.lat, PARIS.lng)
-      const slow = search.fetchPlaces(PARIS_LOIN.lat, PARIS_LOIN.lng)
-      expect(search.fetching.value).toBe(true)
-      await search.searchByName('flore', PARIS.lat, PARIS.lng)
-
-      expect(search.fetching.value).toBe(false)
-      pending.resolve({ places: [place('node-9', 'Lointain')] })
-      await slow
-      expect(search.places.value.map(p => p.name)).toEqual(['Café de Flore'])
-      expect(search.fetching.value).toBe(false)
-    })
-  })
-
   describe('shouldShowSearchHere', () => {
-    it('renvoie false tant qu\'aucune recherche n\'a abouti', () => {
+    it('renvoie false tant que rien n\'est chargé, ou sans vue', async () => {
       const search = usePlacesSearch()
       expect(search.shouldShowSearchHere(PARIS)).toBe(false)
+
+      fetchMock.mockResolvedValueOnce(placesResponse([]))
+      await search.fetchPlaces(PARIS)
+      expect(search.shouldShowSearchHere(null)).toBe(false)
     })
 
-    it('renvoie true seulement quand la carte s\'est éloignée du centre de recherche', async () => {
-      fetchMock.mockResolvedValueOnce({ places: [] })
+    it('false si la vue reste dans l\'emprise chargée, true si elle en sort', async () => {
+      fetchMock.mockResolvedValueOnce(placesResponse([]))
       const search = usePlacesSearch()
-      await search.fetchPlaces(PARIS.lat, PARIS.lng)
+      await search.fetchPlaces(PARIS)
 
-      expect(search.shouldShowSearchHere(null)).toBe(false)
-      expect(search.shouldShowSearchHere({ lat: PARIS.lat + 0.001, lng: PARIS.lng })).toBe(false)
-      expect(search.shouldShowSearchHere(PARIS_LOIN)).toBe(true)
+      expect(search.shouldShowSearchHere(PARIS)).toBe(false)
+      expect(search.shouldShowSearchHere(PARIS_DEDANS)).toBe(false)
+      expect(search.shouldShowSearchHere(PARIS_DECALE)).toBe(true)
+      expect(search.shouldShowSearchHere(LYON)).toBe(true)
+    })
+
+    it('après zoomTooLow : true dès qu\'on zoome, même dans l\'emprise', async () => {
+      const large = view('2.0,48.6,2.7,49.1', 10)
+      fetchMock.mockResolvedValueOnce(placesResponse([], { zoomTooLow: true }))
+      const search = usePlacesSearch()
+      await search.fetchPlaces(large)
+
+      expect(search.shouldShowSearchHere(large)).toBe(false)
+      expect(search.shouldShowSearchHere(view('2.2,48.7,2.5,49.0', 10))).toBe(false)
+      expect(search.shouldShowSearchHere(view('2.2,48.7,2.5,49.0', 11))).toBe(true)
+    })
+
+    it('après truncated : true dès qu\'on zoome', async () => {
+      fetchMock.mockResolvedValueOnce(placesResponse([], { truncated: true }))
+      const search = usePlacesSearch()
+      await search.fetchPlaces(PARIS)
+
+      expect(search.shouldShowSearchHere(PARIS_DEDANS)).toBe(true)
+    })
+
+    it('sans zoomTooLow ni truncated, zoomer dans l\'emprise ne propose rien', async () => {
+      fetchMock.mockResolvedValueOnce(placesResponse([]))
+      const search = usePlacesSearch()
+      await search.fetchPlaces(PARIS)
+
+      expect(search.shouldShowSearchHere({ ...PARIS_DEDANS, zoom: 17 })).toBe(false)
     })
   })
 })
