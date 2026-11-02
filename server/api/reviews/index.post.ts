@@ -1,32 +1,26 @@
 import { db } from '../../database'
 import { reviews } from '../../database/schema'
+import { readValidatedBodyOr400, requirePlace } from '../../utils/api'
+import { requireAuth } from '../../utils/auth'
+import { reviewBodySchema } from '../../utils/bodySchemas'
 
+/**
+ * `POST /api/reviews` `{ placeId, rating, comment?, photos? }` → avis créé.
+ * `rating` entier 1–5, `comment` ≤ 1000 caractères, `photos` ≤ 5 data URI
+ * JPEG / PNG / WebP de ≈ 2 Mo maximum chacune.
+ */
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
-  const body = await readBody(event)
-
-  const placeId = String(body.placeId || '')
-  const rating = Number(body.rating)
-  const comment = String(body.comment || '').trim()
-  const photos: string[] = Array.isArray(body.photos) ? body.photos : []
-
-  if (!placeId) {
-    throw createError({ statusCode: 400, statusMessage: 'placeId requis' })
-  }
-  if (!rating || rating < 1 || rating > 5) {
-    throw createError({ statusCode: 400, statusMessage: 'Note entre 1 et 5 requise' })
-  }
-  if (photos.length > 5) {
-    throw createError({ statusCode: 400, statusMessage: '5 photos maximum' })
-  }
+  const { placeId, rating, comment, photos } = await readValidatedBodyOr400(event, reviewBodySchema)
+  await requirePlace(placeId)
 
   const inserted = await db.insert(reviews).values({
     placeId,
     userId: user.id,
     rating,
-    comment: comment || null,
+    comment,
     photos: photos.length ? JSON.stringify(photos) : null,
-  }).returning({ id: reviews.id }).get()
+  }).returning({ id: reviews.id, createdAt: reviews.createdAt }).get()
 
   return {
     id: inserted.id,
@@ -34,8 +28,9 @@ export default defineEventHandler(async (event) => {
     rating,
     comment,
     photos,
+    userId: user.id,
     username: user.username,
     avatarUrl: user.avatarUrl,
-    createdAt: new Date(),
+    createdAt: inserted.createdAt,
   }
 })
