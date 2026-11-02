@@ -2,7 +2,7 @@
 import type { PawspotPlace, MapCenter, CategoryFilter } from '~/types/places'
 
 const { latitude, longitude, loading, error, getLocation } = useUserLocation()
-const { places, fetching, fetchPlaces, searchByName, shouldShowSearchHere } = usePlacesSearch()
+const { places, fetching, searchError, fetchPlaces, searchByName, retry, shouldShowSearchHere } = usePlacesSearch()
 const { loggedIn } = useAuth()
 const { checkFavorite, toggleFavorite, isFavorited } = useFavorites()
 
@@ -125,8 +125,19 @@ function dogPolicyText(place: PawspotPlace | null): string {
   }
 }
 
-function onSearchInput() {
+function cancelPendingSearch() {
   if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = null
+}
+
+function runNameSearch(q: string) {
+  const lat = mapCenter.value?.lat ?? latitude.value
+  const lng = mapCenter.value?.lng ?? longitude.value
+  if (lat && lng) searchByName(q, lat, lng)
+}
+
+function onSearchInput() {
+  cancelPendingSearch()
   const q = searchQuery.value.trim()
   if (!q) {
     // Empty query: reload places at current position
@@ -135,13 +146,13 @@ function onSearchInput() {
     if (lat && lng) fetchPlaces(lat, lng)
     return
   }
-  searchDebounce = setTimeout(() => {
-    const lat = mapCenter.value?.lat ?? latitude.value
-    const lng = mapCenter.value?.lng ?? longitude.value
-    if (lat && lng) {
-      searchByName(q, lat, lng)
-    }
-  }, 500)
+  searchDebounce = setTimeout(() => runNameSearch(q), 500)
+}
+
+function onSearchEnter() {
+  cancelPendingSearch()
+  const q = searchQuery.value.trim()
+  if (q) runNameSearch(q)
 }
 
 onMounted(() => {
@@ -149,6 +160,7 @@ onMounted(() => {
 })
 
 function clearSearch() {
+  cancelPendingSearch()
   searchQuery.value = ''
   const lat = mapCenter.value?.lat ?? latitude.value
   const lng = mapCenter.value?.lng ?? longitude.value
@@ -198,10 +210,11 @@ function clearSearch() {
               placeholder="Rechercher un lieu par nom..."
               class="w-full bg-transparent text-sm text-white placeholder-white/40 outline-none"
               @input="onSearchInput"
-              @keydown.enter="onSearchInput"
+              @keydown.enter="onSearchEnter"
             >
             <button
               v-if="searchQuery"
+              aria-label="Effacer la recherche"
               class="absolute right-0 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
               @click="clearSearch"
             >
@@ -269,6 +282,15 @@ function clearSearch() {
           <div v-if="fetching" class="flex items-center gap-2 text-sm text-paw-orange-400">
             <div class="h-4 w-4 animate-spin rounded-full border-2 border-paw-orange-400 border-t-transparent" />
             Recherche...
+          </div>
+          <div v-else-if="searchError" class="flex items-center gap-2 text-sm text-white/70" role="alert">
+            <span>Impossible de charger les lieux.</span>
+            <button
+              class="rounded-full bg-paw-orange-500/20 px-3 py-1 text-xs text-paw-orange-400 transition hover:bg-paw-orange-500/40"
+              @click="retry"
+            >
+              Réessayer
+            </button>
           </div>
           <div v-else class="text-sm text-white/70">
             <span class="font-semibold text-white">{{ filteredPlaces.length }}</span>
