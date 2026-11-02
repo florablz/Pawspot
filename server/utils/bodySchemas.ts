@@ -1,6 +1,6 @@
 /**
  * Schémas Zod des corps des routes avis et alertes.
- * À déplacer dans `shared/schemas.ts` (agent donnees) pour que le front valide
+ * À déplacer dans `shared/schemas.ts` pour que le front valide
  * avec les mêmes règles.
  */
 import { z } from 'zod'

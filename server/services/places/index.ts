@@ -1,6 +1,6 @@
 /**
  * Service des lieux : cache en base des lieux OSM, rafraîchi par tuiles de zoom 12
- * (CAHIER_DES_CHARGES.md §4.1), et accès aux lieux pour les routes.
+ * et accès aux lieux pour les routes.
  *
  * Toutes les fonctions acceptent des dépendances injectables (`db`, `fetch`,
  * `now`…) pour les tests : aucun appel réseau réel n'est nécessaire.

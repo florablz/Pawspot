@@ -22,7 +22,7 @@ export const sessions = sqliteTable('sessions', {
 
 /**
  * Lieux : cache des lieux OSM (`source = 'osm'`, rafraîchis par tuiles) et lieux
- * ajoutés par la communauté (`source = 'user'`). Voir CAHIER_DES_CHARGES.md §4.1.
+ * ajoutés par la communauté (`source = 'user'`).
  */
 export const places = sqliteTable('places', {
   /** `osm:node:123` / `osm:way:…` / `osm:relation:…` / `user:<nanoid>`. */
