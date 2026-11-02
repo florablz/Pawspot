@@ -1,23 +1,16 @@
 import { eq, or } from 'drizzle-orm'
 import { db } from '../../database'
 import { users } from '../../database/schema'
+import { apiError, readValidatedBodyOr400 } from '../../utils/api'
+import { createSession, hashPassword, setSessionCookie } from '../../utils/auth'
+import { registerBodySchema } from '../../utils/bodySchemas'
 
+/**
+ * `POST /api/auth/register` `{ email, username, password }` → `{ id, email, username, avatarUrl }`
+ * et ouvre une session (cookie). Entrée invalide → 400 ; email ou pseudo pris → 409.
+ */
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-
-  const email = String(body.email || '').trim().toLowerCase()
-  const username = String(body.username || '').trim()
-  const password = String(body.password || '')
-
-  if (!email || !email.includes('@')) {
-    throw createError({ statusCode: 400, statusMessage: 'Email invalide' })
-  }
-  if (username.length < 3 || username.length > 20) {
-    throw createError({ statusCode: 400, statusMessage: 'Le pseudo doit faire entre 3 et 20 caracteres' })
-  }
-  if (password.length < 8) {
-    throw createError({ statusCode: 400, statusMessage: 'Le mot de passe doit faire au moins 8 caracteres' })
-  }
+  const { email, username, password } = await readValidatedBodyOr400(event, registerBodySchema)
 
   const existing = await db.select({ id: users.id })
     .from(users)
@@ -25,7 +18,7 @@ export default defineEventHandler(async (event) => {
     .get()
 
   if (existing) {
-    throw createError({ statusCode: 409, statusMessage: 'Email ou pseudo deja utilise' })
+    throw apiError(409, 'Email ou pseudo déjà utilisé')
   }
 
   const passwordHash = await hashPassword(password)
