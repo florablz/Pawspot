@@ -26,7 +26,7 @@ async function onSubmit() {
       <div class="mb-8 text-center">
         <img src="/logo/patte-de-chien.png" alt="PawSpot" class="mx-auto mb-4 h-12 w-12">
         <h1 class="text-2xl font-bold text-white">Connexion</h1>
-        <p class="mt-1 text-sm text-white/50">Connecte-toi pour acceder a ton compte</p>
+        <p class="mt-1 text-sm text-white/50">Connecte-toi pour accéder à ton compte</p>
       </div>
 
       <form class="space-y-4" @submit.prevent="onSubmit">
@@ -64,14 +64,14 @@ async function onSubmit() {
           class="flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange-500 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-paw-orange-500/25 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
         >
           <div v-if="submitting" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-          {{ submitting ? 'Connexion...' : 'Se connecter' }}
+          {{ submitting ? 'Connexion…' : 'Se connecter' }}
         </button>
       </form>
 
       <p class="mt-6 text-center text-sm text-white/40">
         Pas encore de compte ?
         <NuxtLink to="/register" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
-          Creer un compte
+          Créer un compte
         </NuxtLink>
       </p>
     </div>

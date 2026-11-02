@@ -13,7 +13,10 @@ async function onLogout() {
     <!-- Logged in: avatar button -->
     <button
       v-if="loggedIn"
-      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-sm font-bold text-paw-orange-400 uppercase transition hover:bg-paw-orange-500/40"
+      type="button"
+      class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-sm font-bold text-paw-orange-400 uppercase transition hover:bg-paw-orange-500/40"
+      :aria-label="`Menu du compte ${user?.username ?? ''}`"
+      :aria-expanded="open"
       @click="open = !open"
     >
       {{ user?.username?.charAt(0) || '?' }}
@@ -23,7 +26,7 @@ async function onLogout() {
     <NuxtLink
       v-else
       to="/login"
-      class="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-paw-orange-500/20 px-3 text-xs font-medium text-paw-orange-400 transition hover:bg-paw-orange-500/40"
+      class="flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-paw-orange-500/20 px-3 text-xs font-medium text-paw-orange-400 transition hover:bg-paw-orange-500/40"
     >
       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
@@ -50,7 +53,7 @@ async function onLogout() {
         </div>
         <NuxtLink
           to="/favorites"
-          class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+          class="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
           @click="open = false"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -59,13 +62,13 @@ async function onLogout() {
           Mes favoris
         </NuxtLink>
         <button
-          class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+          class="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
           @click="onLogout"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" />
           </svg>
-          Deconnexion
+          Déconnexion
         </button>
       </div>
     </Transition>

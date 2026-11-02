@@ -33,8 +33,8 @@ async function onSubmit() {
     <div class="glass w-full max-w-sm rounded-3xl p-8">
       <div class="mb-8 text-center">
         <img src="/logo/patte-de-chien.png" alt="PawSpot" class="mx-auto mb-4 h-12 w-12">
-        <h1 class="text-2xl font-bold text-white">Creer un compte</h1>
-        <p class="mt-1 text-sm text-white/50">Rejoins la communaute Pawspot</p>
+        <h1 class="text-2xl font-bold text-white">Créer un compte</h1>
+        <p class="mt-1 text-sm text-white/50">Rejoins la communauté PawSpot</p>
       </div>
 
       <form class="space-y-4" @submit.prevent="onSubmit">
@@ -73,7 +73,7 @@ async function onSubmit() {
             minlength="8"
             autocomplete="new-password"
             class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
-            placeholder="8 caracteres minimum"
+            placeholder="8 caractères minimum"
           >
         </div>
 
@@ -99,12 +99,12 @@ async function onSubmit() {
           class="flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange-500 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-paw-orange-500/25 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
         >
           <div v-if="submitting" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-          {{ submitting ? 'Creation...' : 'Creer mon compte' }}
+          {{ submitting ? 'Création…' : 'Créer mon compte' }}
         </button>
       </form>
 
       <p class="mt-6 text-center text-sm text-white/40">
-        Deja inscrit ?
+        Déjà inscrit ?
         <NuxtLink to="/login" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
           Se connecter
         </NuxtLink>
