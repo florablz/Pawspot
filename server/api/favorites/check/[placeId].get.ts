@@ -1,13 +1,14 @@
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../../../database'
 import { favorites } from '../../../database/schema'
+import { getPlaceIdParam } from '../../../utils/api'
+import { getUserFromSession } from '../../../utils/auth'
 
+/** `GET /api/favorites/check/:placeId` → `{ favorited }` (`false` si non connecté). */
 export default defineEventHandler(async (event) => {
+  const placeId = getPlaceIdParam(event)
   const user = await getUserFromSession(event)
   if (!user) return { favorited: false }
-
-  const placeId = getRouterParam(event, 'placeId')
-  if (!placeId) return { favorited: false }
 
   const existing = await db.select({ id: favorites.id })
     .from(favorites)

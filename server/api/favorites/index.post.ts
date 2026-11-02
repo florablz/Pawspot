@@ -1,42 +1,21 @@
-import { eq, and } from 'drizzle-orm'
+import { favoriteBodySchema } from '~~/shared/schemas'
 import { db } from '../../database'
 import { favorites } from '../../database/schema'
+import { readValidatedBodyOr400, requirePlace } from '../../utils/api'
+import { requireAuth } from '../../utils/auth'
 
+/**
+ * `POST /api/favorites` `{ placeId }` → `{ placeId, favorited: true }`.
+ * Idempotent : un lieu déjà en favori renvoie la même réponse, sans doublon.
+ */
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
-  const body = await readBody(event)
+  const { placeId } = await readValidatedBodyOr400(event, favoriteBodySchema)
+  await requirePlace(placeId)
 
-  const placeId = String(body.placeId || '')
-  const placeName = String(body.placeName || '')
-  const placeLat = Number(body.placeLat)
-  const placeLon = Number(body.placeLon)
-  const placeCategory = String(body.placeCategory || '')
+  await db.insert(favorites)
+    .values({ userId: user.id, placeId })
+    .onConflictDoNothing({ target: [favorites.userId, favorites.placeId] })
 
-  if (!placeId || !placeName) {
-    throw createError({ statusCode: 400, statusMessage: 'Donnees du lieu requises' })
-  }
-
-  // Check if already favorited
-  const existing = await db.select({ id: favorites.id })
-    .from(favorites)
-    .where(and(eq(favorites.userId, user.id), eq(favorites.placeId, placeId)))
-    .get()
-
-  if (existing) {
-    // Remove favorite (toggle)
-    await db.delete(favorites).where(eq(favorites.id, existing.id))
-    return { favorited: false }
-  }
-
-  // Add favorite
-  await db.insert(favorites).values({
-    userId: user.id,
-    placeId,
-    placeName,
-    placeLat,
-    placeLon,
-    placeCategory,
-  })
-
-  return { favorited: true }
+  return { placeId, favorited: true }
 })
