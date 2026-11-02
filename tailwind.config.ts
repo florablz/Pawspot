@@ -42,6 +42,16 @@ export default {
             700: '#D32F2F',
             300: '#E57373',
           },
+          // Statut chien « probablement accepté en terrasse — non confirmé ».
+          yellow: {
+            400: '#FDD835',
+            300: '#FFF176',
+          },
+          // Statut chien « info non disponible ».
+          gray: {
+            400: '#9E9E9E',
+            300: '#BDBDBD',
+          },
           white: '#FFFFFF',
           cream: '#FFF8E1',
         },
