@@ -12,7 +12,6 @@ export interface PawspotPlace {
   description?: string
   cuisine?: string
   image?: string
-  dog?: string
   dogPolicy?: 'all_day' | 'night_only' | 'no' | 'restricted' | 'unknown'
   dogPolicySource?: string
 }
