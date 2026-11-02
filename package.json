@@ -22,11 +22,11 @@
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "bcrypt": "^6.0.0",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.4",
     "leaflet": "^1.9.4",
-    "nanoid": "^5.1.7",
-    "nuxt": "^4.4.2",
-    "vue": "^3.5.30",
+    "nanoid": "^5.1.16",
+    "nuxt": "^4.6.3",
+    "vue": "^3.5.44",
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
