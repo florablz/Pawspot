@@ -1,5 +1,5 @@
 /**
- * Configuration UNIQUE des catégories de lieux (CAHIER_DES_CHARGES.md §3.4) :
+ * Configuration UNIQUE des catégories de lieux :
  * clé, libellés, icône, couleur du marqueur, sélecteurs OSM.
  * Utilisée par le client (filtres, marqueurs) et le serveur (requête Overpass,
  * classement des éléments OSM).

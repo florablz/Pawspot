@@ -1,5 +1,5 @@
 /**
- * Statut « chien » d'un lieu (CAHIER_DES_CHARGES.md §3.8 bis) et lecture des
+ * Statut « chien » d'un lieu et lecture des
  * tags OSM `dog` / `dog:conditional`. Fonctions pures, client et serveur.
  *
  * `access:conditional` n'est PAS lu ici : il décrit l'accès général au lieu
