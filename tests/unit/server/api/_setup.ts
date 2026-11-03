@@ -13,6 +13,8 @@
  * - Overpass : `fetch` global simulé (`fetchMock`), aucun appel réseau. Le
  *   disjoncteur du processus est remis à zéro avant chaque test : une pause
  *   ouverte par un test (Overpass en panne) ne court-circuite pas le suivant.
+ * - Nominatim (`GET /api/geocode`) : même `fetchMock` ; la file « 1 requête/s »
+ *   et les requêtes en cours sont remises à zéro avant chaque test.
  */
 import { fileURLToPath } from 'node:url'
 import { beforeEach, vi } from 'vitest'
@@ -30,6 +32,8 @@ beforeEach(async () => {
   // Import paresseux : rien n'est chargé avant que `setupApi` ait fixé DATABASE_URL.
   const { resetOverpassCircuit } = await import('../../../../server/services/places')
   resetOverpassCircuit()
+  const { resetNominatimQueue } = await import('../../../../server/utils/nominatim')
+  resetNominatimQueue()
 })
 
 /** Routes montées : [méthode, chemin h3, module]. Imports explicites (les noms de fichiers contiennent des crochets). */
@@ -48,6 +52,7 @@ const ROUTES = [
   ['post', '/api/auth/login', () => import('../../../../server/api/auth/login.post')],
   ['post', '/api/auth/logout', () => import('../../../../server/api/auth/logout.post')],
   ['get', '/api/auth/me', () => import('../../../../server/api/auth/me.get')],
+  ['get', '/api/geocode', () => import('../../../../server/api/geocode.get')],
 ] as const
 
 export interface ApiResponse<T = unknown> {
@@ -55,6 +60,8 @@ export interface ApiResponse<T = unknown> {
   body: T
   /** Texte brut du corps (pour chercher une fuite de données). */
   text: string
+  /** En-têtes de la réponse (`Cache-Control`, `Retry-After`…). */
+  headers: Headers
   /** Valeur du cookie de session posé par la réponse (`''` s'il est effacé, `undefined` s'il n'est pas touché). */
   sessionCookie: string | undefined
 }
@@ -142,7 +149,7 @@ export async function setupApi(): Promise<ApiBench> {
     catch {
       // corps non JSON : laissé en texte
     }
-    return { status: response.status, body: parsed as T, text, sessionCookie: readSessionCookie(response.headers) }
+    return { status: response.status, body: parsed as T, text, headers: response.headers, sessionCookie: readSessionCookie(response.headers) }
   }
 
   async function createUser(username: string) {
