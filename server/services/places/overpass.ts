@@ -1,6 +1,7 @@
 /**
- * Client Overpass : requête construite depuis `shared/categories.ts`, instance
- * de secours, délai par instance et délai total, disjoncteur par instance,
+ * Client Overpass : requête construite depuis `shared/categories.ts`, instances
+ * de secours essayées dans l'ordre, délai total partagé (le temps non consommé
+ * passe aux instances suivantes), disjoncteur par instance,
  * User-Agent identifiable. `fetch` et l'état du disjoncteur sont injectables
  * (les tests n'appellent jamais Overpass en vrai).
  */
@@ -9,29 +10,86 @@ import type { CategoryKey } from '../../../shared/categories'
 import type { Bbox } from '../../../shared/geo'
 import { PAWSPOT_USER_AGENT } from '../../utils/http'
 
-/** Instance principale puis instance de secours. */
+/**
+ * Instances publiques, dans l'ordre d'essai (liste par défaut, remplaçable par
+ * `OVERPASS_ENDPOINTS`). Toutes figurent dans la liste des instances publiques du
+ * wiki OSM, couvrent le monde entier et demandent un usage raisonnable avec un
+ * User-Agent identifiable (envoyé à chaque appel) :
+ * 1. overpass-api.de (FOSSGIS), instance de référence : < 10 000 requêtes et < 1 Go
+ *    par jour ; répond 429 / 504 quand elle est saturée (échec en ~0,1 s) ;
+ * 2. maps.mail.ru (VK) : lente mais disponible (~17 s pour une petite requête mesurés
+ *    le 2026-11-03) ;
+ * 3. overpass.private.coffee ;
+ * 4. overpass.kumi.systems.
+ * Le volume reste faible : cache par tuiles de 7 jours, au plus une requête par
+ * appel, disjoncteur de 2 minutes après un échec.
+ */
 export const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ] as const
 
-/** Délai maximal côté client, par instance. */
-export const OVERPASS_TIMEOUT_MS = 25_000
 /**
- * Délai total par défaut de `runOverpassQuery`, toutes instances comprises
- * (réparti entre les instances disponibles : 12,5 s chacune avec deux instances).
+ * Délai maximal d'un essai (une instance). Le temps total, lui, est fixé par
+ * l'appelant (`overpassDeadlineMs`) : chaque instance reçoit le temps restant,
+ * au plus 20 s. Avec 40 s au total, une instance qui ne répond jamais laisse donc
+ * encore ~20 s à la suivante (l'instance lente mais vivante, ~17 s, a sa chance).
  */
-export const OVERPASS_DEADLINE_MS = 25_000
-/** En dessous de ce temps restant, on n'essaie plus d'instance (l'essai n'aurait aucune chance d'aboutir). */
-export const OVERPASS_MIN_ATTEMPT_MS = 500
+export const OVERPASS_TIMEOUT_MS = 20_000
+/** Délai total par défaut de `runOverpassQuery`, toutes instances comprises. */
+export const OVERPASS_DEADLINE_MS = 40_000
+/**
+ * Plancher d'un essai : en dessous de ce temps restant, on n'essaie plus d'instance
+ * (même une instance en forme met 1 à 3 s pour une requête de quelques tuiles).
+ */
+export const OVERPASS_MIN_ATTEMPT_MS = 3_000
 /**
  * Durée de pause d'une instance après un échec (disjoncteur) : pendant 2 minutes,
  * les requêtes passent directement à l'instance suivante, ou renvoient le cache
  * en `stale`, au lieu d'attendre un nouveau délai dépassé.
  */
 export const OVERPASS_CIRCUIT_PAUSE_MS = 2 * 60 * 1000
-/** Délai demandé au serveur Overpass (`[timeout:…]`), un peu sous le délai client. */
-export const OVERPASS_SERVER_TIMEOUT_S = 23
+/** Pause maximale demandée par un en-tête `Retry-After` (HTTP 429 / 503) qu'on accepte de suivre. */
+export const OVERPASS_RETRY_AFTER_MAX_MS = 10 * 60 * 1000
+/**
+ * `[timeout:…]` par défaut de la requête (secondes), cohérent avec `OVERPASS_TIMEOUT_MS`.
+ * À chaque essai, il est abaissé au délai réellement accordé moins 2 s
+ * (`withServerTimeout`) : le serveur abandonne avant que nous coupions, et une
+ * instance chargée accepte plus volontiers une requête au délai annoncé court.
+ */
+export const OVERPASS_SERVER_TIMEOUT_S = 18
+
+/**
+ * Lit une liste d'instances séparées par des virgules (variable `OVERPASS_ENDPOINTS`).
+ * Les entrées vides, invalides ou en double sont ignorées (seuls `https:` et `http:`
+ * sont acceptés) ; sans aucune entrée valide, la liste par défaut est renvoyée.
+ */
+export function parseOverpassEndpoints(raw: string | undefined | null): string[] {
+  const out: string[] = []
+  for (const part of (raw ?? '').split(',')) {
+    const value = part.trim()
+    if (!value) continue
+    try {
+      const url = new URL(value)
+      if ((url.protocol === 'https:' || url.protocol === 'http:') && !out.includes(url.href)) out.push(url.href)
+    }
+    catch {
+      // Entrée invalide : ignorée.
+    }
+  }
+  return out.length ? out : [...OVERPASS_ENDPOINTS]
+}
+
+let configuredCache: { raw: string | undefined; endpoints: string[] } | undefined
+
+/** Instances configurées : `OVERPASS_ENDPOINTS` si défini et valide, sinon la liste par défaut. */
+export function configuredOverpassEndpoints(env: Record<string, string | undefined> = process.env): string[] {
+  const raw = env.OVERPASS_ENDPOINTS
+  if (!configuredCache || configuredCache.raw !== raw) configuredCache = { raw, endpoints: parseOverpassEndpoints(raw) }
+  return configuredCache.endpoints
+}
 
 export interface OverpassElement {
   type: 'node' | 'way' | 'relation'
@@ -44,6 +102,7 @@ export interface OverpassElement {
 
 export interface OverpassDeps {
   fetch?: typeof fetch
+  /** Instances, dans l'ordre (défaut : `configuredOverpassEndpoints()`). */
   overpassEndpoints?: readonly string[]
   /** Délai maximal par instance (défaut `OVERPASS_TIMEOUT_MS`). */
   overpassTimeoutMs?: number
@@ -64,12 +123,16 @@ interface CircuitEntry {
   until: number
   /**
    * Délai accordé lors de l'essai qui a expiré ; `Infinity` pour une erreur franche
-   * (réseau, HTTP 5xx / 429…). Un essai ultérieur avec un délai plus long que
-   * celui-ci reste permis : une instance lente mais vivante, coupée à 5 s pour une
-   * emprise déjà en cache, peut encore servir une emprise vide avec 12,5 s.
+   * (réseau, HTTP 5xx / 429…). Un essai ultérieur avec un délai nettement plus long
+   * (plus de `CIRCUIT_LONGER_ATTEMPT_RATIO` fois) reste permis : une instance lente
+   * mais vivante, coupée à 10 s pour une emprise déjà en cache, peut encore servir
+   * une emprise vide avec 20 s.
    */
   failedWithin: number
 }
+
+/** Un essai au moins 1,5 fois plus long que celui qui a expiré passe malgré la pause. */
+export const CIRCUIT_LONGER_ATTEMPT_RATIO = 1.5
 
 /**
  * Mémoire des échecs récents, par URL d'instance.
@@ -90,7 +153,7 @@ export class OverpassCircuit {
       this.entries.delete(endpoint)
       return false
     }
-    return attemptMs <= entry.failedWithin
+    return attemptMs < entry.failedWithin * CIRCUIT_LONGER_ATTEMPT_RATIO
   }
 
   recordFailure(endpoint: string, now: number, pauseMs: number, failedWithin = Number.POSITIVE_INFINITY): void {
@@ -136,6 +199,15 @@ export function buildOverpassBboxQuery(bbox: Bbox, categories?: readonly Categor
   return `[out:json][timeout:${OVERPASS_SERVER_TIMEOUT_S}][bbox:${b}];\n(\n${statements}\n);\nout center tags qt;`
 }
 
+/**
+ * Abaisse le `[timeout:N]` de la requête au délai accordé à l'essai, moins 2 s
+ * (au moins 1 s) : jamais au-dessus de la valeur d'origine.
+ */
+export function withServerTimeout(query: string, attemptMs: number): string {
+  const target = Math.max(1, Math.floor(attemptMs / 1000) - 2)
+  return query.replace(/\[timeout:(\d+)\]/, (_, n: string) => `[timeout:${Math.min(Number(n), target)}]`)
+}
+
 /** Requête d'un seul élément OSM. */
 export function buildOverpassElementQuery(type: 'node' | 'way' | 'relation', id: number): string {
   return `[out:json][timeout:${OVERPASS_SERVER_TIMEOUT_S}];\n${type}(${Math.trunc(id)});\nout center tags;`
@@ -163,7 +235,7 @@ class AttemptTimeout extends Error {
  * `fetch` + lecture du JSON, bornés à `ms` : le signal annule la requête, et la
  * course avec le minuteur garantit le délai même si `fetch` ignorait le signal.
  */
-async function fetchJson(doFetch: typeof fetch, endpoint: string, init: RequestInit, ms: number): Promise<{ status: number; data?: OverpassResponse }> {
+async function fetchJson(doFetch: typeof fetch, endpoint: string, init: RequestInit, ms: number): Promise<{ status: number; data?: OverpassResponse; retryAfterMs?: number }> {
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
@@ -175,7 +247,10 @@ async function fetchJson(doFetch: typeof fetch, endpoint: string, init: RequestI
   })
   const work = (async () => {
     const response = await doFetch(endpoint, { ...init, signal: controller.signal })
-    if (!response.ok) return { status: response.status }
+    if (!response.ok) {
+      response.body?.cancel().catch(() => {})
+      return { status: response.status, retryAfterMs: parseRetryAfter(response.headers.get('retry-after'), Date.now()) }
+    }
     return { status: response.status, data: await response.json() as OverpassResponse }
   })()
   work.catch(() => {}) // rejet tardif après expiration du minuteur : déjà traité
@@ -187,18 +262,31 @@ async function fetchJson(doFetch: typeof fetch, endpoint: string, init: RequestI
   }
 }
 
+/** En-tête `Retry-After` (secondes ou date HTTP) en millisecondes ; `undefined` si absent ou illisible. */
+export function parseRetryAfter(value: string | null | undefined, now: number): number | undefined {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000
+  const date = Date.parse(trimmed)
+  return Number.isNaN(date) ? undefined : Math.max(0, date - now)
+}
+
 /** HTTP 400 : requête refusée (erreur de notre côté), l'instance n'est pas en cause. */
 function statusTripsCircuit(status: number): boolean {
   return status !== 400
 }
 
 /**
- * Exécute la requête sur chaque instance jusqu'au premier succès.
- * - Délai total `overpassDeadlineMs`, réparti entre les instances disponibles
- *   (chacune au plus `overpassTimeoutMs`) ; une instance qui échoue vite laisse
- *   son temps aux suivantes.
- * - Disjoncteur : une instance en échec récent est sautée sans appel réseau ; si
- *   toutes le sont, l'erreur est immédiate.
+ * Exécute la requête sur chaque instance, dans l'ordre, jusqu'au premier succès.
+ * - Budget : délai total `overpassDeadlineMs` ; chaque essai reçoit le temps restant,
+ *   au plus `overpassTimeoutMs`. Une instance qui échoue vite (HTTP 429 / 502 / 504
+ *   « at capacity » en 0,1 s) laisse donc tout son temps aux suivantes. Plus aucun
+ *   essai quand il reste moins de `OVERPASS_MIN_ATTEMPT_MS`.
+ * - `[timeout:N]` de la requête abaissé au délai de chaque essai (`withServerTimeout`).
+ * - Disjoncteur par instance : une instance en échec récent est sautée sans appel
+ *   réseau (après un délai dépassé, seulement pour des essais pas nettement plus
+ *   longs) ; si toutes le sont, l'erreur est immédiate. HTTP 429 (saturation) : on
+ *   passe à la suivante, et la pause suit `Retry-After` s'il est plus long (≤ 10 min).
  * - Un `remark` contenant « runtime error » (délai ou mémoire dépassés côté Overpass,
  *   résultat partiel) compte comme un échec, sans couper le disjoncteur (cela dépend
  *   de la requête, pas de l'instance) : on ne veut pas marquer une tuile comme
@@ -207,34 +295,32 @@ function statusTripsCircuit(status: number): boolean {
  */
 export async function runOverpassQuery(query: string, deps: OverpassDeps = {}): Promise<OverpassElement[]> {
   const doFetch = deps.fetch ?? globalThis.fetch
-  const endpoints = deps.overpassEndpoints ?? OVERPASS_ENDPOINTS
+  const endpoints = deps.overpassEndpoints ?? configuredOverpassEndpoints()
   const timeoutMs = deps.overpassTimeoutMs ?? OVERPASS_TIMEOUT_MS
   const deadlineMs = deps.overpassDeadlineMs ?? OVERPASS_DEADLINE_MS
   const circuit = deps.overpassCircuit ?? defaultOverpassCircuit
   const pauseMs = deps.overpassCircuitPauseMs ?? OVERPASS_CIRCUIT_PAUSE_MS
+  const minAttemptMs = Math.min(OVERPASS_MIN_ATTEMPT_MS, timeoutMs)
   const attempts: string[] = []
   const start = Date.now()
 
-  // Délai nominal d'un essai pour cet appel : sert à décider quelles instances sont en pause.
-  const share = Math.min(timeoutMs, deadlineMs / Math.max(endpoints.length, 1))
-  const available = endpoints.filter((endpoint) => {
-    if (!circuit.isOpen(endpoint, share, start)) return true
-    attempts.push(`${new URL(endpoint).host}: en pause après un échec récent`)
-    return false
-  })
-
-  for (const [i, endpoint] of available.entries()) {
+  for (const endpoint of endpoints) {
     const host = new URL(endpoint).host
-    const remaining = deadlineMs - (Date.now() - start)
-    if (remaining < OVERPASS_MIN_ATTEMPT_MS) {
+    const now = Date.now()
+    const remaining = deadlineMs - (now - start)
+    const attemptMs = Math.min(timeoutMs, remaining)
+    if (circuit.isOpen(endpoint, attemptMs, now)) {
+      attempts.push(`${host}: en pause après un échec récent`)
+      continue
+    }
+    if (remaining < minAttemptMs) {
       attempts.push(`${host}: délai total dépassé`)
       break
     }
-    const attemptMs = Math.min(timeoutMs, remaining / (available.length - i))
     try {
-      const { status, data } = await fetchJson(doFetch, endpoint, {
+      const { status, data, retryAfterMs } = await fetchJson(doFetch, endpoint, {
         method: 'POST',
-        body: new URLSearchParams({ data: query }).toString(),
+        body: new URLSearchParams({ data: withServerTimeout(query, attemptMs) }).toString(),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
@@ -242,8 +328,13 @@ export async function runOverpassQuery(query: string, deps: OverpassDeps = {}): 
         },
       }, attemptMs)
       if (!data) {
-        attempts.push(`${host}: HTTP ${status}`)
-        if (statusTripsCircuit(status)) circuit.recordFailure(endpoint, Date.now(), pauseMs)
+        attempts.push(`${host}: HTTP ${status}${status === 429 ? ' (saturée)' : ''}`)
+        if (statusTripsCircuit(status)) {
+          const pause = pauseMs > 0 && retryAfterMs !== undefined
+            ? Math.max(pauseMs, Math.min(retryAfterMs, OVERPASS_RETRY_AFTER_MAX_MS))
+            : pauseMs
+          circuit.recordFailure(endpoint, Date.now(), pause)
+        }
         continue
       }
       if (typeof data.remark === 'string' && /runtime error/i.test(data.remark)) {
@@ -262,8 +353,7 @@ export async function runOverpassQuery(query: string, deps: OverpassDeps = {}): 
       const name = err instanceof Error ? err.name : 'Error'
       const timedOut = name === 'TimeoutError' || name === 'AbortError'
       attempts.push(`${host}: ${timedOut ? 'délai dépassé' : 'erreur réseau ou JSON'}`)
-      // Au moins `share` : la dernière instance reçoit le temps restant, à peine moins que `share`.
-      circuit.recordFailure(endpoint, Date.now(), pauseMs, timedOut ? Math.max(attemptMs, share) : undefined)
+      circuit.recordFailure(endpoint, Date.now(), pauseMs, timedOut ? attemptMs : undefined)
     }
   }
   throw new OverpassError(attempts)
