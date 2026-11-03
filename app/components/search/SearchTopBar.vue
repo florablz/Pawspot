@@ -22,7 +22,7 @@ const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible
         v-model="query"
         type="search"
         enterkeyhint="search"
-        placeholder="Filtrer les lieux par nom…"
+        placeholder="Filtrer par nom…"
         :class="['min-h-[44px] w-full rounded-lg bg-transparent pl-2 pr-11 text-sm text-white placeholder-white/70 outline-none [&::-webkit-search-cancel-button]:hidden', focusRing]"
       >
       <button
