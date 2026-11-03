@@ -23,8 +23,8 @@ let resizeObserver: ResizeObserver | null = null
 function updateScrollHints() {
   const el = row.value
   if (!el) return
-  moreLeft.value = el.scrollLeft > 4
-  moreRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4
+  moreLeft.value = el.scrollLeft > 8
+  moreRight.value = Math.ceil(el.scrollLeft + el.clientWidth) < el.scrollWidth - 8
 }
 
 /** Fait défiler d'environ une demi-largeur (souris / clavier ; au doigt on glisse). */
@@ -57,7 +57,7 @@ const arrowBtn = 'pointer-events-auto absolute top-0 hidden h-11 w-11 items-cent
       ref="row"
       role="group"
       aria-label="Filtres"
-      class="flex gap-2 overflow-x-auto px-1 pb-2 pt-1 scrollbar-none"
+      class="flex gap-2 overflow-x-auto scroll-px-12 px-1 pb-2 pt-1 scrollbar-none"
       @scroll.passive="updateScrollHints"
     >
       <button
