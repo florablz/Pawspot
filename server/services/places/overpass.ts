@@ -192,11 +192,17 @@ function coord(n: number): string {
   return n.toFixed(6)
 }
 
-/** Requête de tous les lieux des catégories dans l'emprise (format `[bbox:sud,ouest,nord,est]`). */
-export function buildOverpassBboxQuery(bbox: Bbox, categories?: readonly CategoryKey[]): string {
+/**
+ * Requête de tous les lieux des catégories dans l'emprise (format `[bbox:sud,ouest,nord,est]`).
+ * `serverTimeoutS` : `[timeout:N]` annoncé (défaut `OVERPASS_SERVER_TIMEOUT_S` ; plus long
+ * pour le pré-remplissage, qui n'a pas d'utilisateur qui attend). Il est ensuite abaissé
+ * au délai de chaque essai par `withServerTimeout`.
+ */
+export function buildOverpassBboxQuery(bbox: Bbox, categories?: readonly CategoryKey[], serverTimeoutS: number = OVERPASS_SERVER_TIMEOUT_S): string {
   const b = `${coord(bbox.minLat)},${coord(bbox.minLon)},${coord(bbox.maxLat)},${coord(bbox.maxLon)}`
   const statements = overpassStatements(categories).map(s => `  ${s}`).join('\n')
-  return `[out:json][timeout:${OVERPASS_SERVER_TIMEOUT_S}][bbox:${b}];\n(\n${statements}\n);\nout center tags qt;`
+  const timeout = Math.max(1, Math.trunc(serverTimeoutS))
+  return `[out:json][timeout:${timeout}][bbox:${b}];\n(\n${statements}\n);\nout center tags qt;`
 }
 
 /**
