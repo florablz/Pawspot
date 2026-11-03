@@ -50,29 +50,66 @@ describe('GET /api/places/:id', () => {
     expect(res.status).toBe(404)
   })
 
-  it('lieu OSM absent de la base mais inexistant sur Overpass : 404', async () => {
-    fetchMock.mockResolvedValue(overpassResponse([]))
-    const res = await api.request<ApiErrorBody>('GET', url('osm:node:999999'))
-    expect(res.status).toBe(404)
-    expect(res.body.message).toBe('Lieu introuvable')
-  })
-
-  it('lieu OSM absent de la base : lu sur Overpass puis servi depuis le cache', async () => {
+  it('anonyme + lieu OSM absent de la base : 404 sans appeler Overpass', async () => {
     const flore = overpassFixture.elements.find(e => e.id === 1001)!
     fetchMock.mockResolvedValue(overpassResponse([flore]))
-    const first = await api.request<Place>('GET', url('osm:node:1001'))
+    const res = await api.request<ApiErrorBody>('GET', url('osm:node:1001'))
+    expect(res.status).toBe(404)
+    expect(res.body).toMatchObject({ statusCode: 404, message: 'Lieu introuvable' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('anonyme + Overpass injoignable : 404 (pas 503), sans appeler Overpass', async () => {
+    overpassDown()
+    const res = await api.request<ApiErrorBody>('GET', url('osm:way:778'))
+    expect(res.status).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('session invalide : traitée comme anonyme (404 sans Overpass)', async () => {
+    fetchMock.mockResolvedValue(overpassResponse([]))
+    const res = await api.request<ApiErrorBody>('GET', url('osm:node:31337'), { session: 'session-forgee' })
+    expect(res.status).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('anonyme : un lieu déjà en base reste lisible (200)', async () => {
+    await api.insertPlace({ id: 'osm:node:4242', name: 'Square du test' })
+    const res = await api.request<Place>('GET', url('osm:node:4242'))
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ id: 'osm:node:4242', name: 'Square du test' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('connecté + lieu OSM inexistant sur Overpass : 404', async () => {
+    const { session } = await api.createUser('inexistant')
+    fetchMock.mockResolvedValue(overpassResponse([]))
+    const res = await api.request<ApiErrorBody>('GET', url('osm:node:999999'), { session })
+    expect(res.status).toBe(404)
+    expect(res.body.message).toBe('Lieu introuvable')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('connecté + lieu OSM absent de la base : lu sur Overpass puis servi depuis le cache (même en anonyme)', async () => {
+    const { session } = await api.createUser('lecteur')
+    const flore = overpassFixture.elements.find(e => e.id === 1001)!
+    fetchMock.mockResolvedValue(overpassResponse([flore]))
+    const first = await api.request<Place>('GET', url('osm:node:1001'), { session })
     expect(first.status).toBe(200)
     expect(first.body).toMatchObject({ id: 'osm:node:1001', name: 'Café de Flore', dogStatus: 'osm_yes' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    const second = await api.request<Place>('GET', url('osm:node:1001'))
+    const second = await api.request<Place>('GET', url('osm:node:1001'), { session })
     expect(second.status).toBe(200)
+    const anonymous = await api.request<Place>('GET', url('osm:node:1001'))
+    expect(anonymous.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('Overpass injoignable (OverpassError) : 503 avec un message français sans détail interne', async () => {
+  it('connecté + Overpass injoignable (OverpassError) : 503 avec un message français sans détail interne', async () => {
+    const { session } = await api.createUser('panne')
     overpassDown()
-    const res = await api.request<ApiErrorBody>('GET', url('osm:way:777'))
+    const res = await api.request<ApiErrorBody>('GET', url('osm:way:777'), { session })
     expect(res.status).toBe(503)
     expect(res.body).toMatchObject({
       statusCode: 503,
