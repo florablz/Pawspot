@@ -117,11 +117,8 @@ describe('selectCities', () => {
     expect((error as Error).message).toBe('Ville inconnue : Atlantide, Ys. Liste des villes : --list.')
   })
 
-  // BUG (donnees, scripts/prefetch-lib.ts) : `selectCities(names, all)` cherche les noms avec
-  // `findPrefetchCity(name)` sur PREFETCH_CITIES et ignore la liste `all` fournie. Sans effet
-  // aujourd'hui (le script n'injecte rien), mais le paramètre ne sert que quand `names` est vide.
-  // Retirer `.fails` une fois corrigé (`findPrefetchCity(name, all)`).
-  it.fails('cherche les villes dans la liste fournie', () => {
+  // Régression du correctif donnees 8901c51 : `all` sert aussi à la recherche par nom.
+  it('cherche les villes dans la liste fournie', () => {
     const custom: PrefetchCity[] = [{ key: 'brest', name: 'Brest', lat: 48.39, lon: -4.49, radiusKm: 2 }]
     expect(selectCities(['Brest'], custom)).toEqual(custom)
   })
