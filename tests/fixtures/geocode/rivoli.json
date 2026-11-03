@@ -1,0 +1,21 @@
+{
+  "results": [
+    {
+      "label": "12 Rue de Rivoli, 75004 Paris",
+      "lat": 48.8556,
+      "lon": 2.3593,
+      "type": "address",
+      "postcode": "75004",
+      "city": "Paris"
+    },
+    {
+      "label": "Rue de Rivoli, 75001 Paris",
+      "lat": 48.8606,
+      "lon": 2.3376,
+      "bbox": { "minLon": 2.3226, "minLat": 48.8530, "maxLon": 2.3640, "maxLat": 48.8660 },
+      "type": "street",
+      "postcode": "75001",
+      "city": "Paris"
+    }
+  ]
+}

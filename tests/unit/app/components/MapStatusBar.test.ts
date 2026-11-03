@@ -237,4 +237,23 @@ describe('MapStatusBar', () => {
     expect(buttons.length).toBeGreaterThan(0)
     for (const b of buttons) expect(b.classes()).toContain('min-h-[44px]')
   })
+
+  describe('géolocalisation refusée', () => {
+    const MESSAGE = 'Géolocalisation refusée. Cherchez votre ville ou une adresse dans la barre de recherche, ou zoomez sur la carte.'
+
+    it('le bouton « Chercher une ville » émet focus-search', async () => {
+      const wrapper = bar({ loaded: false, count: 0, loadedCount: 0, locationMessage: MESSAGE })
+      const notice = wrapper.get('[data-testid="notice-location"]')
+      expect(notice.text()).toContain(MESSAGE)
+      const button = notice.findAll('button').find(b => b.text() === 'Chercher une ville')!
+      expect(button.attributes('type')).toBe('button')
+      await button.trigger('click')
+      expect(wrapper.emitted('focus-search')).toHaveLength(1)
+      expect(wrapper.emitted('retry')).toBeUndefined()
+    })
+
+    it('pas de bouton « Chercher une ville » sans message de géolocalisation', () => {
+      expect(bar().findAll('button').some(b => b.text() === 'Chercher une ville')).toBe(false)
+    })
+  })
 })

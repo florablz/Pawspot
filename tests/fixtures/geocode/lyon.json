@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "label": "Lyon, Métropole de Lyon, Rhône",
+      "lat": 45.7578137,
+      "lon": 4.8320114,
+      "bbox": { "minLon": 4.7718134, "minLat": 45.7073666, "maxLon": 4.8983774, "maxLat": 45.8082628 },
+      "type": "city",
+      "city": "Lyon"
+    },
+    {
+      "label": "69002, Lyon",
+      "lat": 45.7485,
+      "lon": 4.8271,
+      "type": "postcode",
+      "postcode": "69002",
+      "city": "Lyon"
+    }
+  ]
+}

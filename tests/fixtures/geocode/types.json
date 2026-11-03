@@ -1,0 +1,10 @@
+{
+  "results": [
+    { "label": "8 Place Bellecour, 69002 Lyon", "lat": 45.7578, "lon": 4.8320, "type": "address", "postcode": "69002", "city": "Lyon" },
+    { "label": "Parc de la Tête d'Or, Lyon", "lat": 45.7772, "lon": 4.8558, "type": "place", "city": "Lyon" },
+    { "label": "Quai Saint-Antoine, 69002 Lyon", "lat": 45.7630, "lon": 4.8300, "type": "street", "postcode": "69002", "city": "Lyon" },
+    { "label": "13001, Marseille", "lat": 43.2999, "lon": 5.3841, "type": "postcode", "postcode": "13001", "city": "Marseille" },
+    { "label": "Annecy, Haute-Savoie", "lat": 45.8992, "lon": 6.1294, "type": "city", "city": "Annecy" },
+    { "label": "Bretagne", "lat": 48.2020, "lon": -2.9326, "bbox": { "minLon": -5.1413, "minLat": 47.2779, "maxLon": -1.0159, "maxLat": 48.9000 }, "type": "region" }
+  ]
+}
