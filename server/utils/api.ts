@@ -77,7 +77,7 @@ export function getPlaceIdParam(event: H3Event, name = 'placeId'): string {
 /** Erreur 503 quand Overpass est injoignable (`OverpassError`), sinon l'erreur telle quelle. */
 export function toPlacesServiceError(error: unknown): unknown {
   if (error instanceof OverpassError) {
-    return apiError(503, 'Le service des lieux est momentanément indisponible, réessaie dans quelques instants')
+    return apiError(503, 'Le service des lieux est momentanément indisponible, réessayez dans quelques instants.')
   }
   return error
 }
