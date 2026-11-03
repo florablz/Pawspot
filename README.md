@@ -61,6 +61,49 @@ Deux causes fréquentes, à vérifier dans cet ordre :
    - réessayez plus tard (quelques minutes à quelques heures). L'état du serveur principal est visible sur <https://overpass-api.de/api/status> : si la page est lente à s'ouvrir ou indique qu'aucun créneau n'est libre (« slots available » à 0), le problème vient de là ;
    - vous pouvez aussi changer l'ordre ou la liste des serveurs essayés avec la variable optionnelle `OVERPASS_ENDPOINTS` (voir [Variables d'environnement](#variables-denvironnement)).
 
+## Pré-remplir les lieux des grandes villes
+
+Les lieux viennent des serveurs publics Overpass (OpenStreetMap), souvent saturés. Le script `npm run places:prefetch` charge **à l'avance** les lieux du centre des grandes villes françaises et les enregistre dans la base : la carte les affiche ensuite instantanément, même quand Overpass ne répond pas.
+
+**Quand le lancer ?** Quand Overpass va bien : ouvrez <https://overpass-api.de/api/status>. Si la page s'ouvre vite et indique au moins un créneau libre (`slots available` supérieur à 0), c'est le bon moment. Sinon, réessayez plus tard.
+
+**Comment ?** Depuis la racine du projet, après `npm run db:migrate` :
+
+```bash
+# Voir la liste des villes disponibles et leur taille (aucun appel réseau)
+npm run places:prefetch -- --list
+
+# Compter ce qu'il reste à charger pour Paris, sans rien télécharger
+npm run places:prefetch -- --city=Paris --dry-run
+
+# Charger Paris (puis Lyon et Marseille)
+npm run places:prefetch -- --city=Paris
+npm run places:prefetch -- --city=Lyon,Marseille
+
+# Toutes les villes (long : plusieurs minutes, voire plus)
+npm run places:prefetch
+```
+
+> Les deux tirets `--` après `places:prefetch` sont obligatoires : ils transmettent les options au script.
+
+Options utiles :
+
+| Option | Rôle |
+|---|---|
+| `--city=Paris` | Ville(s) à traiter ; répétable (`--city=Paris --city=Lyon`) ou séparées par des virgules. Par défaut : toutes. |
+| `--list` | Affiche les villes et leur nombre de tuiles, puis s'arrête. |
+| `--dry-run` | Compte les tuiles à charger sans appeler Overpass. |
+| `--force` | Recharge aussi les zones déjà chargées il y a moins de 7 jours. |
+| `--pause=5` | Pause entre deux requêtes, en secondes (par défaut 5 : on reste poli avec ces serveurs gratuits). |
+| `--timeout=90` | Délai maximal d'un essai, en secondes. |
+| `--tiles-per-request=4` | Nombre de tuiles par requête (1 à 8). |
+
+**Résultat** (code de sortie, utile dans un script) : `0` tout est fait ; `1` certaines tuiles ont échoué ou une erreur est survenue ; `2` le script s'est arrêté de lui-même parce qu'Overpass ne répondait plus (ou `Ctrl + C`).
+
+**Reprise :** vous pouvez interrompre le script (`Ctrl + C`) ou le relancer après un arrêt : les zones déjà chargées depuis moins de 7 jours sont sautées, rien n'est refait inutilement.
+
+**Base de production :** le script refuse par sécurité une base distante (Turso). Pour la remplir volontairement : `PREFETCH_ALLOW_REMOTE=1 npm run places:prefetch -- --city=Paris` (avec les variables Turso), en surveillant le quota de l'offre gratuite Turso.
+
 ## Comptes de démo
 
 `npm run db:seed` (après `npm run db:migrate`) crée ces comptes de test, avec quelques avis, favoris et alertes sur des lieux fictifs à Paris (identifiants `demo-*`). Le script est relançable sans créer de doublons.
@@ -85,9 +128,11 @@ Mots de passe de démonstration uniquement : ne jamais lancer le seed sur la bas
 | `npm run lint:fix` | Corrige automatiquement ce qu'ESLint sait corriger. |
 | `npm run typecheck` | Vérifie les types TypeScript en mode strict : l'application (`nuxi typecheck`) puis les tests (`vue-tsc` sur `tests/unit/server` et `tests/unit/app`). |
 | `npm test` | Lance les tests unitaires (Vitest, sans réseau). Échoue si aucun test n'est trouvé. |
+| `npm run test:e2e` | Lance les tests de bout en bout (Playwright) dans Google Chrome, avec position et serveurs Overpass simulés. Chrome doit être installé sur l'ordinateur. |
 | `npm run db:generate` | Génère une nouvelle migration Drizzle après une modification de `server/database/schema.ts`. |
 | `npm run db:migrate` | Applique les migrations à la base désignée par `DATABASE_URL`. |
 | `npm run db:seed` | Remplit la base avec des données de démo. |
+| `npm run places:prefetch` | Pré-charge les lieux des grandes villes depuis Overpass (voir [Pré-remplir les lieux des grandes villes](#pré-remplir-les-lieux-des-grandes-villes)). |
 
 Avant de proposer une modification : `npm run lint && npm run typecheck && npm test` doivent passer. La même vérification tourne automatiquement sur GitHub (voir `.github/workflows/ci.yml`) à chaque push et pull request vers `main`.
 
@@ -102,6 +147,7 @@ Toutes les variables sont documentées dans [`.env.example`](.env.example). Le f
 | `APP_URL` | oui | URL publique de l'app (`http://localhost:3000` en local). |
 | `TILE_URL` | non | Modèle d'URL des tuiles de carte. Tuiles OSM par défaut ; un fournisseur gratuit (OpenFreeMap, MapTiler, Stadia…) en production. |
 | `OVERPASS_ENDPOINTS` | non | Serveurs Overpass à essayer, dans l'ordre : URLs complètes se terminant par `/api/interpreter`, séparées par des virgules. Les entrées invalides sont ignorées ; si aucune n'est valide (ou si la variable est absente), la liste par défaut est utilisée (overpass-api.de, maps.mail.ru, overpass.private.coffee, overpass.kumi.systems). |
+| `PREFETCH_ALLOW_REMOTE` | non | `1` autorise `npm run places:prefetch` à écrire dans une base distante (Turso). Absent par défaut : le script n'accepte qu'une base locale. |
 | `PAWSPOT_MIGRATIONS_DIR` | non | Dossier des migrations. Utile seulement si le serveur tourne avec une base locale depuis un dossier situé hors du dépôt. À laisser vide sinon. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | phase 4 | Stockage des photos sur Cloudflare R2. |
 | `RESEND_API_KEY` | phase 4 | Envoi d'emails via Resend. |
@@ -118,7 +164,7 @@ server/             Back Nitro
   database/         Schéma Drizzle, connexion et migrations
   utils/            Utilitaires serveur (auth…)
 shared/             Types, schémas (Zod) et utilitaires partagés entre front et back
-scripts/            Scripts de maintenance (migrations, données de démo)
+scripts/            Scripts de maintenance (migrations, données de démo, pré-remplissage des lieux)
 tests/              Tests Vitest
   unit/server/      Tests du back (routes d'API, base, service des lieux, shared/) — environnement Node
   unit/app/         Tests du front (composants, composables, utilitaires) — environnement happy-dom
