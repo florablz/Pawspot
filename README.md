@@ -152,7 +152,7 @@ Toutes les variables sont documentées dans [`.env.example`](.env.example). Le f
 |---|---|---|
 | `DATABASE_URL` | oui | Adresse de la base. En local : `file:pawspot.db`. En production : URL Turso (`libsql://…`). |
 | `DATABASE_AUTH_TOKEN` | en prod | Jeton Turso. Vide en local. |
-| `APP_URL` | oui | URL publique de l'app (`http://localhost:3000` en local). |
+| `APP_URL` | oui | URL publique de l'app, sans `/` final (`http://localhost:3000` en local, `https://<ton-projet>.vercel.app` en production). Sert aux liens d'emails et aux balises de partage (Open Graph, canonique). Lue au build : redéploie après l'avoir modifiée. |
 | `TILE_URL` | non | Modèle d'URL des tuiles de carte. Tuiles OSM par défaut ; un fournisseur gratuit (OpenFreeMap, MapTiler, Stadia…) en production. |
 | `OVERPASS_ENDPOINTS` | non | Serveurs Overpass à essayer, dans l'ordre : URLs complètes se terminant par `/api/interpreter`, séparées par des virgules. Les entrées invalides sont ignorées ; si aucune n'est valide (ou si la variable est absente), la liste par défaut est utilisée (overpass-api.de, maps.mail.ru, overpass.private.coffee, overpass.kumi.systems). |
 | `PREFETCH_ALLOW_REMOTE` | non | `1` autorise `npm run places:prefetch` à écrire dans une base distante (Turso). Absent par défaut : le script n'accepte qu'une base locale. |
