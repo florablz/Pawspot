@@ -13,6 +13,7 @@ import {
   OSM_MISS_TTL_MS,
   MAX_REFRESH_TILES,
   OVERPASS_CIRCUIT_PAUSE_MS,
+  OVERPASS_TIMEOUT_MS,
   OverpassCircuit,
   OverpassError,
   REFRESH_DEADLINE_CACHED_MS,
@@ -564,13 +565,13 @@ describe('disjoncteur Overpass', () => {
 
   it('un délai dépassé sur une emprise en cache n\'empêche pas un essai plus long, et un succès referme la pause', async () => {
     await seedParis()
-    // Emprise en cache (10 s, 5 s par instance) : les deux instances expirent.
+    // Emprise en cache (10 s au total) : les deux instances expirent (essais de 10 s).
     fetchMock.mockRejectedValue(new DOMException('délai', 'TimeoutError'))
     const slow = deps(after(8), { overpassTimeoutMs: 30_000 })
     expect((await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, slow)).stale).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    // Emprise vide (25 s, 12,5 s par instance) : essai plus long permis, l'instance principale répond.
+    // Emprise vide (40 s, 30 s pour le premier essai) : essai ≥ 1,5× plus long permis, l'instance principale répond.
     fetchMock.mockReset()
     fetchMock.mockResolvedValue(overpassOk([]))
     expect((await getPlacesInBbox({ bbox: LYON, zoom: 14 }, slow)).stale).toBe(false)
@@ -595,41 +596,44 @@ describe('disjoncteur Overpass', () => {
     expect(fetchMock.mock.calls.map(c => c[0])).toEqual([ENDPOINTS[0]])
   })
 
-  it('tuiles déjà chargées : délai total de 10 s, puis le cache en stale', async () => {
+  it('tuiles déjà chargées : délai total de 10 s, un seul essai (plus de 3 s ensuite), puis le cache en stale', async () => {
     await seedParis()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: T0 })
     fetchMock.mockImplementation(neverAnswers)
-    const call = track(getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8), { overpassTimeoutMs: 60_000 })))
+    const call = track(getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(after(8), { overpassTimeoutMs: OVERPASS_TIMEOUT_MS })))
 
     await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_CACHED_MS - 1)
     expect(call.settled).toBe(false)
-    // 5 s par instance : la seconde a été essayée.
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)
     expect(call.settled).toBe(true)
+    // Toute l'enveloppe est passée à la première instance : rien ne reste pour la seconde.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     const result = await call.promise
     expect(result.stale).toBe(true)
     expect(result.places).toHaveLength(3)
   })
 
-  it('tuile jamais chargée : délai total de 25 s, puis liste vide en stale', async () => {
+  it('tuile jamais chargée : délai total de 40 s, 20 s par instance, puis liste vide en stale', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: T0 })
     fetchMock.mockImplementation(neverAnswers)
-    const call = track(getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(T0, { overpassTimeoutMs: 60_000 })))
+    const call = track(getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps(T0, { overpassTimeoutMs: OVERPASS_TIMEOUT_MS })))
 
-    await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_CACHED_MS)
-    expect(call.settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(OVERPASS_TIMEOUT_MS - 1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_EMPTY_MS - REFRESH_DEADLINE_CACHED_MS - 1)
+    await vi.advanceTimersByTimeAsync(1)
     expect(call.settled).toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(REFRESH_DEADLINE_EMPTY_MS - OVERPASS_TIMEOUT_MS - 1)
+    expect(call.settled).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     expect(call.settled).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(await call.promise).toMatchObject({ places: [], stale: true })
     expect(await db.$count(schema.fetchedTiles)).toBe(0)
   })
 
-  it('ensurePlace : délai total de 10 s', async () => {
+  it('ensurePlace : délai total de 20 s', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: T0 })
     fetchMock.mockImplementation(neverAnswers)
     const call = track(ensurePlace('osm:node:1001', deps(T0, { overpassTimeoutMs: 60_000 })))
