@@ -4,6 +4,7 @@
  */
 import type { CategoryKey } from './categories'
 import type { DogStatus, DogStatusInfo, OsmDogPolicyKind } from './dogStatus'
+import type { Bbox } from './geo'
 
 /**
  * Identifiant d'un lieu :
@@ -99,3 +100,45 @@ export interface PlacesResponse {
 
 /** Élément de `GET /api/favorites` : le lieu complet et la date d'ajout (ISO). */
 export type FavoritePlace = Place & { favoritedAt: string }
+
+// ---------------------------------------------------------------------------
+// Géocodage (`GET /api/geocode?q=`, §3.2 / §4.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Nature d'un résultat de géocodage (le front choisit le zoom et l'icône) :
+ * - `city` : commune, ville, village ;
+ * - `postcode` : code postal ;
+ * - `street` : rue sans numéro ;
+ * - `address` : adresse précise (numéro + rue) ;
+ * - `place` : lieu nommé (gare, monument, quartier…) ;
+ * - `region` : département, région, territoire (DROM / COM).
+ */
+export const GEOCODE_RESULT_TYPES = ['city', 'postcode', 'street', 'address', 'place', 'region'] as const
+export type GeocodeResultType = (typeof GEOCODE_RESULT_TYPES)[number]
+
+/**
+ * Résultat de géocodage renvoyé par `GET /api/geocode?q=` (proxy Nominatim / Photon),
+ * déjà converti par le serveur : le front ne voit jamais le format du fournisseur.
+ */
+export interface GeocodeResult {
+  /** Libellé affiché dans les suggestions (ex. « 8 Rue de Rivoli, 75004 Paris »). */
+  label: string
+  /** Point où centrer la carte (WGS84). */
+  lat: number
+  lon: number
+  /**
+   * Emprise à afficher si le fournisseur en donne une (ville, région…), au format
+   * `Bbox` de shared/geo.ts (`minLon, minLat, maxLon, maxLat`, pas l'ordre de Nominatim).
+   */
+  bbox?: Bbox
+  type: GeocodeResultType
+  postcode?: string
+  /** Commune (absente pour une région). */
+  city?: string
+}
+
+/** Réponse de `GET /api/geocode?q=` : résultats dans l'ordre de pertinence (liste vide si rien). */
+export interface GeocodeResponse {
+  results: GeocodeResult[]
+}
