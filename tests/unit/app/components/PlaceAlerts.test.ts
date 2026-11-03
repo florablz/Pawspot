@@ -9,6 +9,8 @@ import PlaceAlerts from '~/components/place/PlaceAlerts.vue'
 interface FetchOptions { method?: string, body?: Record<string, unknown> }
 const fetchMock = vi.fn<(url: string, options?: FetchOptions) => Promise<unknown>>()
 const loggedIn = ref(true)
+/** Lien de connexion fourni par `useLoginLink` (retour à la fiche après connexion). */
+const LOGIN_LINK = { path: '/login', query: { redirect: '/?place=osm%3Anode%3A1' } }
 
 // Auto-imports Nuxt du composant : globaux pour le script, `mocks` pour le gabarit.
 beforeEach(() => {
@@ -20,6 +22,7 @@ beforeEach(() => {
   vi.stubGlobal('$fetch', fetchMock)
   vi.stubGlobal('getApiErrorMessage', getApiErrorMessage)
   vi.stubGlobal('useAuth', () => ({ loggedIn }))
+  vi.stubGlobal('useLoginLink', () => ({ loginLink: computed(() => LOGIN_LINK) }))
 })
 
 afterEach(() => {
@@ -85,8 +88,23 @@ describe('PlaceAlerts', () => {
   it('non connecté : lien vers la connexion, pas de bouton « Signaler »', async () => {
     loggedIn.value = false
     const wrapper = await mountAlerts()
-    expect(wrapper.getComponent(RouterLinkStub).props('to')).toBe('/login')
+    const link = wrapper.getComponent(RouterLinkStub)
+    expect(link.props('to')).toEqual(LOGIN_LINK)
+    expect(link.text()).toBe('Connectez-vous pour signaler')
     expect(wrapper.findAll('button').some(b => b.text().includes('Signaler'))).toBe(false)
+  })
+
+  it('connecté : bouton « Signaler », pas de lien de connexion', async () => {
+    const wrapper = await mountAlerts()
+    expect(wrapper.findAllComponents(RouterLinkStub)).toHaveLength(0)
+    expect(wrapper.findAll('button').some(b => b.text().includes('Signaler'))).toBe(true)
+  })
+
+  it('aucun texte au tutoiement dans le formulaire', async () => {
+    const wrapper = await mountAlerts()
+    await openForm(wrapper)
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.html()).not.toMatch(/\b(tu|ton|ta|tes|choisis|décris)\b/i)
   })
 
   it('propose les 4 types (sans l\'ancien « change »)', async () => {
@@ -100,7 +118,7 @@ describe('PlaceAlerts', () => {
     const wrapper = await mountAlerts()
     await openForm(wrapper)
     await wrapper.get('form').trigger('submit')
-    expect(wrapper.get('form [role="alert"]').text()).toBe('Choisis le type de problème.')
+    expect(wrapper.get('form [role="alert"]').text()).toBe('Choisissez le type de problème.')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -113,10 +131,11 @@ describe('PlaceAlerts', () => {
     await wrapper.get('input[value="info_change"]').setValue()
     expect(wrapper.get('label[for="alert-description"]').text()).toBe('Description (obligatoire)')
     expect(wrapper.get('textarea').attributes('required')).toBeDefined()
+    expect(wrapper.get('textarea').attributes('placeholder')).toBe('Décrivez le changement…')
 
     await wrapper.get('textarea').setValue('   ')
     await wrapper.get('form').trigger('submit')
-    expect(wrapper.get('form [role="alert"]').text()).toBe('Décris le changement.')
+    expect(wrapper.get('form [role="alert"]').text()).toBe('Décrivez le changement.')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -152,11 +171,11 @@ describe('PlaceAlerts', () => {
     const wrapper = await mountAlerts()
     await openForm(wrapper)
     await wrapper.get('input[value="closed"]').setValue()
-    fetchMock.mockRejectedValueOnce({ data: { message: 'Tu as déjà signalé ce lieu récemment' } })
+    fetchMock.mockRejectedValueOnce({ data: { message: 'Vous avez déjà signalé ce lieu récemment' } })
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.get('form [role="alert"]').text()).toBe('Tu as déjà signalé ce lieu récemment')
+    expect(wrapper.get('form [role="alert"]').text()).toBe('Vous avez déjà signalé ce lieu récemment')
     expect(wrapper.find('form').exists()).toBe(true)
   })
 })
