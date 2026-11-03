@@ -23,7 +23,8 @@ const TONE_CLASSES: Record<DogStatusTone, string> = {
   // Bordure en pointillés : « probablement », visuellement distinct d'un statut confirmé.
   yellow: 'bg-paw-yellow-400/10 text-paw-yellow-300 border border-dashed border-paw-yellow-400/70',
   gray: 'bg-paw-white/10 text-paw-gray-300 ring-1 ring-paw-gray-400/40',
-  red: 'bg-paw-red-700/30 text-paw-red-300 ring-1 ring-paw-red-300/50',
+  // Rouge 200 sur rouge 700/30 : 5,8:1 (le rouge 300 ne passait pas l'AA).
+  red: 'bg-paw-red-700/30 text-paw-red-200 ring-1 ring-paw-red-300/50',
 }
 </script>
 
@@ -43,7 +44,7 @@ const TONE_CLASSES: Record<DogStatusTone, string> = {
         class="shrink-0 rounded-full bg-paw-green-500/30 px-1.5 text-[10px] font-bold uppercase tracking-wide"
       >Confirmé</span>
     </span>
-    <span v-if="detail" :class="compact ? 'sr-only' : 'text-xs opacity-90'">{{ detail }}</span>
-    <span v-if="place.dogStatusSource" :class="compact ? 'sr-only' : 'text-xs opacity-80'">Source : {{ place.dogStatusSource }}</span>
+    <span v-if="detail" :class="compact ? 'sr-only' : 'text-xs'">{{ detail }}</span>
+    <span v-if="place.dogStatusSource" :class="compact ? 'sr-only' : 'text-xs'">Source : {{ place.dogStatusSource }}</span>
   </div>
 </template>

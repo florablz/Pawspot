@@ -37,10 +37,12 @@ export default {
             500: '#03A9F4',
             300: '#4FC3F7',
           },
-          // Statut « chiens interdits ».
+          // Statut « chiens interdits », signalements et erreurs.
+          // 200 : texte sur fond rouge translucide (contraste AA sur marron).
           red: {
             700: '#D32F2F',
             300: '#E57373',
+            200: '#EF9A9A',
           },
           // Statut chien « probablement accepté en terrasse — non confirmé ».
           yellow: {

@@ -14,7 +14,7 @@ async function onLogout() {
     <button
       v-if="loggedIn"
       type="button"
-      class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-sm font-bold text-paw-orange-400 uppercase transition hover:bg-paw-orange-500/40"
+      class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-sm font-bold text-paw-orange-300 uppercase transition hover:bg-paw-orange-500/40"
       :aria-label="`Menu du compte ${user?.username ?? ''}`"
       :aria-expanded="open"
       @click="open = !open"
@@ -26,7 +26,7 @@ async function onLogout() {
     <NuxtLink
       v-else
       to="/login"
-      class="flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-paw-orange-500/20 px-3 text-xs font-medium text-paw-orange-400 transition hover:bg-paw-orange-500/40"
+      class="flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-paw-orange-500/20 px-3 text-xs font-medium text-paw-orange-300 transition hover:bg-paw-orange-500/40"
     >
       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
@@ -45,15 +45,15 @@ async function onLogout() {
     >
       <div
         v-if="open && loggedIn"
-        class="absolute right-0 top-full mt-2 w-48 origin-top-right rounded-xl glass p-2 shadow-xl"
+        class="absolute right-0 top-full mt-2 w-48 origin-top-right rounded-xl glass-strong p-2 shadow-xl"
       >
         <div class="border-b border-white/10 px-3 py-2 mb-1">
           <p class="text-sm font-medium text-white truncate">{{ user?.username }}</p>
-          <p class="text-xs text-white/40 truncate">{{ user?.email }}</p>
+          <p class="text-xs text-white/70 truncate">{{ user?.email }}</p>
         </div>
         <NuxtLink
           to="/favorites"
-          class="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+          class="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm text-white/90 transition hover:bg-white/5 hover:text-white"
           @click="open = false"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -62,7 +62,7 @@ async function onLogout() {
           Mes favoris
         </NuxtLink>
         <button
-          class="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+          class="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm text-white/90 transition hover:bg-white/5 hover:text-white"
           @click="onLogout"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

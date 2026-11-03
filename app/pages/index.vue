@@ -121,15 +121,15 @@ onMounted(() => {
       </div>
 
       <div v-if="loading" class="pointer-events-none absolute inset-0 z-[1000] flex items-center justify-center">
-        <div class="glass rounded-2xl px-6 py-4 text-center" role="status">
+        <div class="glass-strong rounded-2xl px-6 py-4 text-center" role="status">
           <div class="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-2 border-paw-orange-400 border-t-transparent" aria-hidden="true" />
-          <p class="text-sm text-white/80">Localisation…</p>
+          <p class="text-sm text-white">Localisation…</p>
         </div>
       </div>
 
       <!-- Barre du haut -->
       <div class="pointer-events-none absolute inset-x-0 top-0 z-[1000] p-3">
-        <div class="pointer-events-auto glass mx-auto flex max-w-2xl items-center gap-2 rounded-2xl py-1 pl-4 pr-1">
+        <div class="pointer-events-auto glass-strong mx-auto flex max-w-2xl items-center gap-2 rounded-2xl py-1 pl-4 pr-1">
           <img src="/logo/patte-de-chien.png" alt="PawSpot" class="h-7 w-7 object-contain">
           <div class="relative min-w-0 flex-1">
             <label for="place-name-filter" class="sr-only">Filtrer les lieux de la zone par nom</label>
@@ -139,13 +139,13 @@ onMounted(() => {
               type="search"
               enterkeyhint="search"
               placeholder="Filtrer les lieux par nom…"
-              class="min-h-[44px] w-full bg-transparent pr-11 text-sm text-white placeholder-white/50 outline-none [&::-webkit-search-cancel-button]:hidden"
+              class="min-h-[44px] w-full bg-transparent pr-11 text-sm text-white placeholder-white/70 outline-none [&::-webkit-search-cancel-button]:hidden"
             >
             <button
               v-if="searchQuery"
               type="button"
               aria-label="Effacer la recherche"
-              class="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-white/60 hover:text-white"
+              class="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-white/80 hover:text-white"
               @click="searchQuery = ''"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -155,7 +155,7 @@ onMounted(() => {
           </div>
           <button
             type="button"
-            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-paw-orange-400 transition hover:bg-paw-orange-500/40"
+            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-paw-orange-300 transition hover:bg-paw-orange-500/40"
             :aria-label="localized ? 'Recentrer sur ma position' : 'Me localiser'"
             @click="locateMe"
           >
@@ -188,7 +188,7 @@ onMounted(() => {
         <div v-if="showSearchHere" class="pointer-events-none absolute inset-x-0 top-[128px] z-[1000] flex justify-center">
           <button
             type="button"
-            class="pointer-events-auto glass flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-medium text-white shadow-lg transition hover:bg-paw-brown-700/60 active:scale-95"
+            class="pointer-events-auto glass-strong flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-medium text-white shadow-lg transition hover:bg-paw-brown-700 active:scale-95"
             @click="searchHere"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-paw-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -204,7 +204,7 @@ onMounted(() => {
         <div v-if="selectedPlace" class="flex justify-center">
           <button
             type="button"
-            class="pointer-events-auto glass flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-medium text-white"
+            class="pointer-events-auto glass-strong flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-medium text-white"
             @click="detailSection?.scrollIntoView({ behavior: 'smooth' })"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

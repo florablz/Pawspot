@@ -167,7 +167,7 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
       <textarea
         id="review-comment"
         v-model="comment"
-        class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/40 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
+        class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/60 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
         rows="3"
         :maxlength="REVIEW_COMMENT_MAX_LENGTH"
         placeholder="Ton avis…"
@@ -200,13 +200,13 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
         </label>
       </div>
 
-      <div v-if="errorMsg" class="mb-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-300" role="alert">{{ errorMsg }}</div>
+      <div v-if="errorMsg" class="mb-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-200" role="alert">{{ errorMsg }}</div>
 
       <div class="flex gap-2">
         <button
           type="submit"
           :disabled="submitting"
-          class="min-h-[44px] flex-1 rounded-xl bg-paw-orange-500 text-sm font-semibold text-white transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
+          class="min-h-[44px] flex-1 rounded-xl bg-paw-orange-500 text-sm font-semibold text-paw-brown-900 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
         >
           {{ submitting ? 'Envoi…' : 'Publier' }}
         </button>
