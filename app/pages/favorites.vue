@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CATEGORIES, DEFAULT_CATEGORY_ICON } from '#shared/categories'
 import type { FavoritePlace } from '#shared/types'
 
 const { loggedIn } = useAuth()
@@ -47,10 +46,6 @@ function onFavoriteChange(placeId: string, favorited: boolean) {
   if (!favorited) dropFromList(placeId)
 }
 
-function categoryOf(fav: FavoritePlace) {
-  return CATEGORIES[fav.category]
-}
-
 onMounted(() => {
   if (!loggedIn.value) navigateTo({ path: '/login', query: { redirect: '/favorites' } })
   else loadFavorites()
@@ -94,42 +89,14 @@ onMounted(() => {
       </div>
 
       <ul v-else-if="favorites.length" class="flex-1 space-y-2 overflow-y-auto px-3 py-3">
-        <li
+        <FavoritesListItem
           v-for="fav in favorites"
           :key="fav.id"
-          class="flex items-center gap-2 rounded-2xl p-2 transition"
-          :class="selectedId === fav.id ? 'bg-paw-orange-500/10 ring-1 ring-paw-orange-500/30' : 'bg-paw-brown-800/40 hover:bg-paw-brown-800/60'"
-        >
-          <button
-            type="button"
-            class="flex min-h-[44px] min-w-0 flex-1 items-center gap-3 rounded-xl p-1.5 text-left"
-            :aria-current="selectedId === fav.id ? 'true' : undefined"
-            @click="selectedId = fav.id"
-          >
-            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-paw-brown-800 text-xl" aria-hidden="true">
-              {{ categoryOf(fav)?.icon ?? DEFAULT_CATEGORY_ICON }}
-            </span>
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-medium text-white">{{ fav.name }}</span>
-              <span class="block text-xs text-white/60">
-                {{ categoryOf(fav)?.singular ?? 'Lieu' }}
-                <span aria-hidden="true">&middot;</span>
-                ajouté {{ formatTimeAgo(fav.favoritedAt) }}
-              </span>
-              <PlaceDogStatusBadge :place="fav" compact class="mt-1" />
-            </span>
-          </button>
-          <button
-            type="button"
-            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-paw-orange-400 transition hover:bg-paw-red-700/30 hover:text-paw-red-200"
-            :aria-label="`Retirer ${fav.name} des favoris`"
-            @click="removeFavorite(fav)"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            </svg>
-          </button>
-        </li>
+          :favorite="fav"
+          :current="selectedId === fav.id"
+          @select="selectedId = fav.id"
+          @remove="removeFavorite(fav)"
+        />
       </ul>
 
       <div v-else class="flex flex-1 flex-col items-center justify-center px-5 text-center">
@@ -169,6 +136,12 @@ onMounted(() => {
 
       <div class="flex-1 overflow-y-auto">
         <PlaceDetails :place="selected" @favorite-change="onFavoriteChange(selected.id, $event)">
+          <NuxtLink
+            :to="placePath(selected.id)"
+            class="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-white/15 px-5 text-sm font-medium text-white transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paw-orange-300 active:scale-[0.98]"
+          >
+            Voir sur la carte
+          </NuxtLink>
           <button
             type="button"
             class="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-paw-red-300/30 px-5 text-sm font-medium text-paw-red-200 transition hover:bg-paw-red-700/20 active:scale-[0.98]"
