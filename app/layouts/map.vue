@@ -7,8 +7,22 @@ import type { PawspotMapApi } from '~/types/map'
  * La page (slot) n'affiche que la fiche.
  */
 const mapRef = ref<PawspotMapApi | null>(null)
+const searchBar = ref<{ focus: () => void } | null>(null)
 const s = useMapScreen(mapRef)
 const { selected, snap, peekHeight, open } = s.sheet
+
+/**
+ * Géolocalisation refusée (vue France) : la barre est mise en évidence ; sans
+ * clavier virtuel, le focus y va directement (sauf si l'utilisateur est déjà ailleurs).
+ */
+function focusSearch() {
+  searchBar.value?.focus()
+}
+watch(() => !!s.locationMessage.value, (shown) => {
+  if (!shown || !matchesMedia('(pointer: fine)')) return
+  const active = document.activeElement
+  if (!active || active === document.body) focusSearch()
+})
 
 const sheetOpen = computed(() => !!selected.value)
 /** Sur desktop, les barres se décalent à gauche du panneau latéral. */
@@ -22,10 +36,14 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
       <!-- Contrôles avant la carte dans l'ordre du DOM : la tabulation les atteint en premier. -->
       <div class="pointer-events-none absolute inset-x-0 top-0 z-[1001] p-3" :class="besidePanel">
         <SearchTopBar
-          v-model:query="s.nameQuery.value"
+          ref="searchBar"
           :localized="s.localized.value"
+          :places="s.places.value"
+          :highlight="!!s.locationMessage.value"
           class="pointer-events-auto mx-auto max-w-2xl"
           @locate="s.locateMe()"
+          @select-place="open"
+          @select-address="s.goToResult"
         />
       </div>
 
@@ -86,6 +104,7 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
           @retry="s.retry"
           @clear-filters="s.clearFilters"
           @disable-confirmed="s.confirmedOnly.value = false"
+          @focus-search="focusSearch"
         />
       </div>
     </section>

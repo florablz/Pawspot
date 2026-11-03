@@ -283,6 +283,27 @@ const api: PawspotMapApi = {
     map.setView(map.unproject(point, zoom), zoom, { animate })
     return true
   },
+  showArea(area, insets) {
+    if (!map || !L) return false
+    const animate = !reducedMotion()
+    // Barres du haut (recherche + filtres) ≈ 140 px, barre d'état en bas ≈ 80 px.
+    const topLeft = L.point(16, 140)
+    const bottomRight = L.point(insets.right + 16, insets.bottom + 80)
+    let zoom = area.maxZoom
+    let center = L.latLng(area.lat, area.lng)
+    if (area.bbox) {
+      const bounds = L.latLngBounds([area.bbox.minLat, area.bbox.minLon], [area.bbox.maxLat, area.bbox.maxLon])
+      zoom = Math.min(map.getBoundsZoom(bounds, false, topLeft.add(bottomRight)), area.maxZoom)
+      if (zoom >= area.minZoom) center = bounds.getCenter()
+    }
+    zoom = Math.max(Math.min(zoom, map.getMaxZoom()), area.minZoom)
+    // Centre décalé : la zone apparaît au milieu de la partie non couverte.
+    const offset = topLeft.subtract(bottomRight).divideBy(2)
+    const target = map.unproject(map.project(center, zoom).subtract(offset), zoom)
+    if (animate) map.flyTo(target, zoom, { duration: 0.8 })
+    else map.setView(target, zoom, { animate: false })
+    return true
+  },
   focusMarker(placeId) {
     const el = markers.get(placeId)?.marker.getElement()
     if (!el) return false
