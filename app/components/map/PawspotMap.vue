@@ -31,10 +31,11 @@ function createPlaceIcon(lib: typeof Leaflet, place: Place, selected: boolean): 
   const category = CATEGORIES[place.category]
   const color = category?.color ?? DEFAULT_CATEGORY_COLOR
   const emoji = category?.icon ?? DEFAULT_CATEGORY_ICON
-  const tone = DOG_STATUS_TONE[place.dogStatus] ?? 'gray'
-  const dot = DOG_STATUS_MARKER_DOT[tone]
+  const dot = DOG_STATUS_MARKER[place.dogStatus] ?? DOG_STATUS_MARKER.unknown
   const size = selected ? 44 : 36
-  const dotSize = selected ? 18 : 16
+  const dotSize = selected ? 20 : 18
+  // Symbole de deux caractères (✓✓) : police plus petite et lettres resserrées.
+  const glyphSize = dot.glyph.length > 1 ? dotSize - 10 : dotSize - 7
   const border = selected ? '3px solid #ffffff' : '2px solid rgba(255,255,255,0.3)'
   const shadow = selected
     ? '0 0 16px rgba(255,255,255,0.3), 0 2px 8px rgba(0,0,0,0.4)'
@@ -58,9 +59,10 @@ function createPlaceIcon(lib: typeof Leaflet, place: Place, selected: boolean): 
       width:${dotSize}px;height:${dotSize}px;
       border-radius:50%;
       background:${dot.color};
-      color:${DOG_STATUS_MARKER_GLYPH_COLOR[tone]};
-      border:2px solid #2C1810;
-      font:700 ${dotSize - 7}px/1 system-ui,sans-serif;
+      color:${dot.glyphColor};
+      border:2px ${dot.dashed ? 'dashed' : 'solid'} #2C1810;
+      font:700 ${glyphSize}px/1 system-ui,sans-serif;
+      letter-spacing:${dot.glyph.length > 1 ? '-1px' : '0'};
       display:flex;align-items:center;justify-content:center;
     ">${dot.glyph}</span></div>`,
     iconSize: [size, size],
