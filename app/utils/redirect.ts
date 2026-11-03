@@ -15,7 +15,9 @@ export function safeRedirect(value: LocationQueryValue | LocationQueryValue[] | 
   if (raw.startsWith('//') || raw.startsWith('/\\')) return '/'
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001F\u007F]/.test(raw)) return '/'
-  const path = raw.split(/[?#]/)[0]
-  if (AUTH_PATHS.includes(path ?? '')) return '/'
+  // vue-router (ni `strict` ni `sensitive`) sert aussi `/login/` et `/LOGIN` :
+  // on compare sans tenir compte de la casse ni des `/` finaux.
+  const path = (raw.split(/[?#]/)[0] ?? '').toLowerCase().replace(/\/+$/, '')
+  if (AUTH_PATHS.includes(path)) return '/'
   return raw
 }
