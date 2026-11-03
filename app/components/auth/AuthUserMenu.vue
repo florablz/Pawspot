@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { user, loggedIn, logout } = useAuth()
+const { loginLink } = useLoginLink()
 const open = ref(false)
 
 async function onLogout() {
@@ -25,7 +26,7 @@ async function onLogout() {
     <!-- Logged out: login link -->
     <NuxtLink
       v-else
-      to="/login"
+      :to="loginLink"
       class="flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-paw-orange-500/20 px-3 text-xs font-medium text-paw-orange-300 transition hover:bg-paw-orange-500/40"
     >
       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

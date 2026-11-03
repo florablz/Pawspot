@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const { login } = useAuth()
+const route = useRoute()
+const { registerLink } = useLoginLink()
 
 const email = ref('')
 const password = ref('')
@@ -11,7 +13,7 @@ async function onSubmit() {
   submitting.value = true
   try {
     await login(email.value, password.value)
-    navigateTo('/')
+    await navigateTo(safeRedirect(route.query.redirect))
   } catch (err: unknown) {
     errorMsg.value = getApiErrorMessage(err, 'Email ou mot de passe incorrect')
   } finally {
@@ -70,7 +72,7 @@ async function onSubmit() {
 
       <p class="mt-6 text-center text-sm text-white/40">
         Pas encore de compte ?
-        <NuxtLink to="/register" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
+        <NuxtLink :to="registerLink" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
           Créer un compte
         </NuxtLink>
       </p>

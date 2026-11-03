@@ -8,6 +8,7 @@ const props = defineProps<{
 const emit = defineEmits<{ change: [favorited: boolean] }>()
 
 const { loggedIn } = useAuth()
+const { loginLink } = useLoginLink()
 const { checkFavorite, toggleFavorite, isFavorited } = useFavorites()
 
 const pending = ref(false)
@@ -68,7 +69,7 @@ async function onClick() {
     </button>
     <NuxtLink
       v-else
-      to="/login"
+      :to="loginLink"
       class="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 text-white/60 transition hover:bg-white/10"
       aria-label="Se connecter pour ajouter aux favoris"
     >

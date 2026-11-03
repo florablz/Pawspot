@@ -2,6 +2,8 @@
 import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from '#shared/schemas'
 
 const { register } = useAuth()
+const route = useRoute()
+const { loginLink } = useLoginLink()
 
 const email = ref('')
 const username = ref('')
@@ -21,7 +23,7 @@ async function onSubmit() {
   submitting.value = true
   try {
     await register(email.value, username.value, password.value)
-    navigateTo('/')
+    await navigateTo(safeRedirect(route.query.redirect))
   } catch (err: unknown) {
     errorMsg.value = getApiErrorMessage(err, 'Erreur lors de la creation du compte')
   } finally {
@@ -107,7 +109,7 @@ async function onSubmit() {
 
       <p class="mt-6 text-center text-sm text-white/40">
         Déjà inscrit ?
-        <NuxtLink to="/login" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
+        <NuxtLink :to="loginLink" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
           Se connecter
         </NuxtLink>
       </p>
