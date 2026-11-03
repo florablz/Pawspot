@@ -98,7 +98,7 @@ export function selectCities(names: readonly string[], all: readonly PrefetchCit
   const selected: PrefetchCity[] = []
   const unknown: string[] = []
   for (const name of names) {
-    const city = findPrefetchCity(name)
+    const city = findPrefetchCity(name, all)
     if (!city) unknown.push(name)
     else if (!selected.includes(city)) selected.push(city)
   }
