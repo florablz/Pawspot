@@ -60,7 +60,8 @@ export const usePlacesSearch = () => {
     const query = { bbox: view.bbox, zoom: Math.round(view.zoom) }
     try {
       for (let attempt = 0; ; attempt++) {
-        const data = await $fetch<PlacesResponse>('/api/places', { query, signal: current.signal })
+        // `retry: 0` : ofetch relancerait chaque 503 une fois, en plus des relances `incomplete`.
+        const data = await $fetch<PlacesResponse>('/api/places', { query, signal: current.signal, retry: 0 })
         if (id !== latestRequest) return
         // Les lieux déjà reçus s'affichent pendant la relance.
         apply(data, view)
