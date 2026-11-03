@@ -86,6 +86,14 @@ npm run places:prefetch
 
 > Les deux tirets `--` après `places:prefetch` sont obligatoires : ils transmettent les options au script.
 
+**Sous macOS, empêchez la mise en veille.** Si l'ordinateur se met en veille pendant le chargement (écran fermé, inactivité), le script est suspendu : un essai a ainsi duré 19 minutes au lieu de quelques-unes. Pour l'éviter, ajoutez `caffeinate -i` devant la commande :
+
+```bash
+caffeinate -i npm run places:prefetch -- --city=Paris
+```
+
+`caffeinate` est un outil fourni avec macOS : il empêche la mise en veille tant que la commande tourne, puis tout redevient normal à la fin. Si l'ordinateur s'est tout de même mis en veille, le script le signale par le message « l'ordinateur s'est probablement mis en veille » : il vous suffit de relancer la même commande, il reprend là où il s'était arrêté.
+
 Options utiles :
 
 | Option | Rôle |
