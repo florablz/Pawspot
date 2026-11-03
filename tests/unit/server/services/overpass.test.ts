@@ -1,10 +1,13 @@
 /**
  * Client Overpass seul (`runOverpassQuery`) : budget partagé entre instances,
  * plancher d'essai, `[timeout:N]` réécrit, HTTP 429 et `Retry-After`, disjoncteur,
- * liste d'instances configurable. Faux minuteurs et `fetch` simulé : aucun réseau.
+ * liste d'instances configurable, délai d'essai tenu sur l'horloge murale (veille).
+ * Faux minuteurs (`setTimeout`, `Date`) et `fetch` simulé : aucun réseau.
+ * `performance` reste réel : l'horloge monotone avance à peine pendant un test.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  ATTEMPT_CLOCK_CHECK_MS,
   CIRCUIT_LONGER_ATTEMPT_RATIO,
   OVERPASS_CIRCUIT_PAUSE_MS,
   OVERPASS_ENDPOINTS,
@@ -14,6 +17,7 @@ import {
   OVERPASS_TIMEOUT_MS,
   OverpassCircuit,
   OverpassError,
+  armAttemptTimer,
   buildOverpassBboxQuery,
   configuredOverpassEndpoints,
   parseOverpassEndpoints,
@@ -310,5 +314,69 @@ describe('buildOverpassBboxQuery : [timeout:N] annoncé', () => {
 
   it('le reste de la requête ne change pas', () => {
     expect(buildOverpassBboxQuery(PARIS, undefined, 90).replace('[timeout:90]', `[timeout:${OVERPASS_SERVER_TIMEOUT_S}]`)).toBe(QUERY)
+  })
+})
+
+describe('délai d\'un essai tenu sur l\'horloge murale', () => {
+  /** En-têtes reçus tout de suite, puis un corps qui ne se termine jamais. */
+  const endlessBody = () => async () => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"elements":['))
+    },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  it('corps sans fin avec en-têtes immédiats : échec à attemptMs, pas avant', async () => {
+    route({ [A]: endlessBody() })
+    const call = track(run({ overpassEndpoints: [A], overpassDeadlineMs: 10_000 }))
+    await vi.advanceTimersByTimeAsync(10_000 - 1)
+    expect(call.settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(call.settled).toBe(true)
+    const error = await call.promise.catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OverpassError)
+    expect((error as OverpassError).attempts).toEqual(['overpass-a.test: délai dépassé'])
+  })
+
+  it('veille simulée de 18 min : coupure au contrôle suivant puis « délai total dépassé »', async () => {
+    route({ [A]: neverAnswers, [B]: async () => ok() })
+    const call = track(run({ overpassEndpoints: [A, B] }))
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(call.settled).toBe(false)
+
+    // Veille : l'horloge murale saute, les minuteurs (horloge monotone) n'ont pas avancé.
+    vi.setSystemTime(Date.now() + 18 * 60_000)
+    expect(call.settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(ATTEMPT_CLOCK_CHECK_MS)
+    expect(call.settled).toBe(true)
+
+    const error = await call.promise.catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OverpassError)
+    expect((error as OverpassError).attempts).toEqual([
+      'overpass-a.test: délai dépassé',
+      'overpass-b.test: délai total dépassé',
+    ])
+    expect(calledHosts()).toEqual([A])
+  })
+
+  it('armAttemptTimer désarmé avant l\'échéance : onExpire jamais appelé', async () => {
+    const onExpire = vi.fn()
+    const disarm = armAttemptTimer(5_000, onExpire)
+    await vi.advanceTimersByTimeAsync(4_000)
+    disarm()
+    await vi.advanceTimersByTimeAsync(60_000)
+    vi.setSystemTime(Date.now() + 60 * 60_000)
+    await vi.advanceTimersByTimeAsync(ATTEMPT_CLOCK_CHECK_MS * 3)
+    expect(onExpire).not.toHaveBeenCalled()
+  })
+
+  it('armAttemptTimer : onExpire appelé une seule fois, à l\'échéance', async () => {
+    const onExpire = vi.fn()
+    armAttemptTimer(5_000, onExpire)
+    await vi.advanceTimersByTimeAsync(5_000 - 1)
+    expect(onExpire).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(onExpire).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(onExpire).toHaveBeenCalledTimes(1)
   })
 })
