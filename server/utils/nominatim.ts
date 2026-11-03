@@ -27,7 +27,37 @@ import { normalizeName } from '../../shared/text'
 import type { GeocodeResult, GeocodeResultType } from '../../shared/types'
 import { PAWSPOT_USER_AGENT } from './http'
 
-export const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
+/** Adresse de base par défaut (instance publique de l'OSMF). */
+export const NOMINATIM_DEFAULT_BASE_URL = 'https://nominatim.openstreetmap.org'
+export const NOMINATIM_SEARCH_URL = `${NOMINATIM_DEFAULT_BASE_URL}/search`
+
+/**
+ * Lit l'adresse de base de Nominatim (variable `NOMINATIM_URL`, sans `/search`),
+ * par ex. un serveur local pour les tests de bout en bout. Seuls `https:` et `http:`
+ * sont acceptés, sans identifiants, requête ni fragment ; le `/` final est retiré.
+ * Valeur absente, vide ou invalide : `NOMINATIM_DEFAULT_BASE_URL`.
+ */
+export function parseNominatimBaseUrl(raw: string | undefined | null): string {
+  const value = raw?.trim()
+  if (!value) return NOMINATIM_DEFAULT_BASE_URL
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return NOMINATIM_DEFAULT_BASE_URL
+    if (url.username || url.password || url.search || url.hash) return NOMINATIM_DEFAULT_BASE_URL
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+  }
+  catch {
+    return NOMINATIM_DEFAULT_BASE_URL
+  }
+}
+
+/**
+ * Adresse de recherche configurée, lue à chaque appel (les tests peuvent changer
+ * `NOMINATIM_URL` sans recharger le module).
+ */
+export function configuredNominatimSearchUrl(env: Record<string, string | undefined> = process.env): string {
+  return `${parseNominatimBaseUrl(env.NOMINATIM_URL)}/search`
+}
 
 /**
  * Codes pays ISO 3166-1 acceptés par Nominatim (`countrycodes`) : France
@@ -76,7 +106,7 @@ export interface NominatimDeps {
   fetch?: typeof fetch
   now?: () => number
   sleep?: (ms: number) => Promise<void>
-  /** Remplace `NOMINATIM_SEARCH_URL` (tests). */
+  /** Remplace l'adresse de recherche (défaut : `configuredNominatimSearchUrl()`). */
   endpoint?: string
   timeoutMs?: number
 }
@@ -328,7 +358,7 @@ export function toGeocodeResults(items: readonly unknown[]): GeocodeResult[] {
 // Appel
 // ---------------------------------------------------------------------------
 
-export function nominatimSearchUrl(query: string, endpoint = NOMINATIM_SEARCH_URL): string {
+export function nominatimSearchUrl(query: string, endpoint = configuredNominatimSearchUrl()): string {
   const url = new URL(endpoint)
   url.search = new URLSearchParams({
     format: 'jsonv2',
