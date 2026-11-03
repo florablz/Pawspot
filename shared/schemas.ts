@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { CATEGORY_KEYS } from './categories'
 import { parseBbox } from './geo'
 import type { Bbox } from './geo'
+import { GEOCODE_RESULT_TYPES } from './types'
 
 /** `osm:<node|way|relation>:<id>` ou `user:<nanoid>` (1 à 64 caractères `A-Za-z0-9_-`). */
 export const PLACE_ID_PATTERN = /^(?:osm:(?:node|way|relation):[1-9]\d{0,15}|user:[\w-]{1,64})$/
@@ -148,6 +149,42 @@ export const loginBodySchema = z.object({
 })
 
 export type LoginBody = z.infer<typeof loginBodySchema>
+
+// ---------------------------------------------------------------------------
+// Géocodage (§3.2)
+// ---------------------------------------------------------------------------
+
+export const GEOCODE_QUERY_MIN_LENGTH = 2
+export const GEOCODE_QUERY_MAX_LENGTH = 100
+
+/** Requête de `GET /api/geocode?q=` : `q` de 2 à 100 caractères après suppression des espaces aux bords. */
+export const geocodeQuerySchema = z.object({
+  q: z.string({ error: 'Recherche requise' })
+    .trim()
+    .min(GEOCODE_QUERY_MIN_LENGTH, { error: `La recherche doit faire au moins ${GEOCODE_QUERY_MIN_LENGTH} caractères` })
+    .max(GEOCODE_QUERY_MAX_LENGTH, { error: `La recherche doit faire au plus ${GEOCODE_QUERY_MAX_LENGTH} caractères` }),
+})
+
+export type GeocodeQuery = z.infer<typeof geocodeQuerySchema>
+
+const latSchema = z.number().min(-90).max(90)
+const lonSchema = z.number().min(-180).max(180)
+
+/**
+ * Forme d'un `GeocodeResult` (shared/types.ts) : sert à relire le cache en base
+ * (`geocode_cache`) et peut servir à `back` pour vérifier sa conversion.
+ */
+export const geocodeResultSchema = z.object({
+  label: z.string().min(1),
+  lat: latSchema,
+  lon: lonSchema,
+  bbox: z.object({ minLon: lonSchema, minLat: latSchema, maxLon: lonSchema, maxLat: latSchema })
+    .refine(b => b.minLon <= b.maxLon && b.minLat <= b.maxLat, { error: 'Emprise inversée' })
+    .optional(),
+  type: z.enum(GEOCODE_RESULT_TYPES),
+  postcode: z.string().optional(),
+  city: z.string().optional(),
+})
 
 // ---------------------------------------------------------------------------
 // Conversion des anciens identifiants (Phase 0)
