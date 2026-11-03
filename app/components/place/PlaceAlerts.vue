@@ -5,6 +5,7 @@ import type { PlaceAlert } from '~/types/api'
 const props = defineProps<{ placeId: string }>()
 
 const { loggedIn } = useAuth()
+const { loginLink } = useLoginLink()
 
 type NewAlertType = Exclude<AlertType, 'change'>
 
@@ -115,7 +116,7 @@ watch(() => props.placeId, () => {
       </button>
       <NuxtLink
         v-else-if="!loggedIn"
-        to="/login"
+        :to="loginLink"
         class="flex min-h-[44px] items-center rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-200 transition hover:bg-paw-red-700/50"
       >
         Connecte-toi pour signaler

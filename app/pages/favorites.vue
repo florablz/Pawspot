@@ -52,7 +52,7 @@ function categoryOf(fav: FavoritePlace) {
 }
 
 onMounted(() => {
-  if (!loggedIn.value) navigateTo('/login')
+  if (!loggedIn.value) navigateTo({ path: '/login', query: { redirect: '/favorites' } })
   else loadFavorites()
 })
 </script>

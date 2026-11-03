@@ -7,6 +7,7 @@ const props = defineProps<{ placeId: string }>()
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const { loggedIn } = useAuth()
+const { loginLink } = useLoginLink()
 
 const reviews = ref<PlaceReview[]>([])
 const loadingReviews = ref(false)
@@ -127,7 +128,7 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
       </button>
       <NuxtLink
         v-else-if="!loggedIn"
-        to="/login"
+        :to="loginLink"
         class="flex min-h-[44px] items-center rounded-full bg-paw-orange-500/20 px-4 text-xs font-medium text-paw-orange-300 transition hover:bg-paw-orange-500/40"
       >
         Connecte-toi pour donner un avis
