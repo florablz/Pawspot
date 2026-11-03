@@ -199,6 +199,7 @@ onMounted(() => {
           :truncated="truncated"
           :incomplete="incomplete"
           :location-message="locationMessage"
+          :locating="loading"
           @retry="retry"
           @clear-filters="clearFilters"
           @disable-confirmed="confirmedOnly = false"

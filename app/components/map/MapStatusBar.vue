@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * Barre d'état sous la carte : nombre de lieux affichés (toujours visible),
- * chargement, erreur + « Réessayer », et bandeaux d'information.
+ * chargement, erreur + « Réessayer », et bandeaux d'information. Le tout est
+ * dans une seule région `role="status"` permanente : seul son contenu change,
+ * ce qui garantit l'annonce par les lecteurs d'écran.
  */
 const props = defineProps<{
   /** Lieux affichés après filtres. */
@@ -21,6 +23,8 @@ const props = defineProps<{
   incomplete: boolean
   /** Message quand la géolocalisation a échoué et que rien n'est chargé. */
   locationMessage: string | null
+  /** Géolocalisation en cours (rien à annoncer tant qu'elle n'a pas abouti). */
+  locating?: boolean
 }>()
 
 defineEmits<{
@@ -30,6 +34,11 @@ defineEmits<{
 }>()
 
 const countText = computed(() => {
+  // Rien de chargé : pas de « 0 lieu affiché » trompeur.
+  if (!props.loaded) {
+    if (props.fetching || props.locating || props.locationMessage) return null
+    return 'Zoomez pour afficher les lieux'
+  }
   const n = props.count
   const base = `${n} lieu${n > 1 ? 'x' : ''} affiché${n > 1 ? 's' : ''}`
   return props.filtersActive && props.loadedCount !== n ? `${base} sur ${props.loadedCount}` : base
@@ -48,57 +57,47 @@ const emptyText = computed(() => {
   return 'Aucun lieu trouvé dans cette zone.'
 })
 
-const actionBtn = 'min-h-[44px] shrink-0 rounded-full px-4 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-paw-orange-300'
+/** La barre principale a quelque chose à montrer (sinon on ne garde que les bandeaux). */
+const showMain = computed(() =>
+  !!countText.value || props.filtersActive || props.fetching || !!props.error || !!emptyText.value || confirmedEmpty.value,
+)
+
+const actionBtn = 'min-h-[44px] shrink-0 rounded-full px-4 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paw-orange-300'
+const notice = 'pointer-events-auto rounded-xl border border-white/10 bg-paw-brown-900/90 px-4 py-2.5 text-xs text-white/90 backdrop-blur'
+const orangeBtn = 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-500/40'
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-md flex-col gap-2">
+  <div class="mx-auto flex max-w-md flex-col gap-2" role="status" aria-live="polite" data-testid="map-status">
     <!-- Bandeaux d'information (discrets) -->
-    <p
-      v-if="locationMessage"
-      class="pointer-events-auto bg-paw-brown-900/90 backdrop-blur border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white/90"
-      data-testid="notice-location"
-    >
+    <p v-if="locationMessage" :class="notice" data-testid="notice-location">
       <span aria-hidden="true">📍</span> {{ locationMessage }}
     </p>
-    <p
-      v-if="zoomTooLow && loaded"
-      class="pointer-events-auto bg-paw-brown-900/90 backdrop-blur border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white/90"
-      data-testid="notice-zoom"
-    >
-      <span aria-hidden="true">🔍</span> Zoomez pour voir les lieux : seuls les lieux déjà connus de PawSpot sont affichés à ce niveau.
+    <p v-if="zoomTooLow && loaded" :class="notice" data-testid="notice-zoom">
+      <span aria-hidden="true">🔍</span> Zoomez sur une ville pour voir tous les lieux.
     </p>
-    <p
-      v-if="truncated"
-      class="pointer-events-auto bg-paw-brown-900/90 backdrop-blur border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white/90"
-      data-testid="notice-truncated"
-    >
+    <p v-if="truncated" :class="notice" data-testid="notice-truncated">
       <span aria-hidden="true">🔍</span> Trop de lieux dans cette zone : zoomez pour tous les afficher.
     </p>
-    <p
-      v-if="stale"
-      class="pointer-events-auto bg-paw-brown-900/90 backdrop-blur border border-white/10 rounded-xl px-4 py-2.5 text-xs text-paw-orange-200"
-      data-testid="notice-stale"
-    >
-      <span aria-hidden="true">⚠️</span> Données en cache : le service de cartes ne répond pas
-    </p>
-    <div
-      v-if="incomplete && !fetching && !error"
-      class="pointer-events-auto bg-paw-brown-900/90 backdrop-blur border border-white/10 flex items-center justify-between gap-3 rounded-xl px-4 py-1.5 text-xs text-white/90"
-      data-testid="notice-incomplete"
-    >
+    <div v-if="stale" :class="[notice, 'flex items-center justify-between gap-3 py-1.5 text-paw-orange-200']" data-testid="notice-stale">
+      <span>
+        <span aria-hidden="true">⚠️</span> Lieux affichés depuis notre sauvegarde : OpenStreetMap ne répond pas pour l'instant, certaines infos peuvent dater.
+      </span>
+      <button v-if="!fetching" type="button" :class="[actionBtn, orangeBtn]" @click="$emit('retry')">
+        Réessayer
+      </button>
+    </div>
+    <div v-if="incomplete && !fetching && !error" :class="[notice, 'flex items-center justify-between gap-3 py-1.5']" data-testid="notice-incomplete">
       <span>Une partie de la zone n'a pas encore été chargée.</span>
-      <button type="button" :class="[actionBtn, 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-500/40']" @click="$emit('retry')">
+      <button type="button" :class="[actionBtn, orangeBtn]" @click="$emit('retry')">
         Compléter
       </button>
     </div>
 
     <!-- Barre principale -->
-    <div class="pointer-events-auto bg-paw-brown-900/90 backdrop-blur border border-white/10 flex flex-col gap-1 rounded-2xl px-5 py-2.5">
-      <div class="flex min-h-[44px] items-center justify-between gap-3">
-        <p class="text-sm text-white/80" aria-live="polite" data-testid="places-count">
-          <span class="font-semibold text-white">{{ countText }}</span>
-        </p>
+    <div v-if="showMain" class="pointer-events-auto flex flex-col gap-1 rounded-2xl border border-white/10 bg-paw-brown-900/90 px-5 py-2.5 backdrop-blur">
+      <div v-if="countText || filtersActive" class="flex min-h-[44px] items-center justify-between gap-3">
+        <p class="text-sm font-semibold text-white" data-testid="places-count">{{ countText }}</p>
         <button
           v-if="filtersActive"
           type="button"
@@ -109,14 +108,14 @@ const actionBtn = 'min-h-[44px] shrink-0 rounded-full px-4 text-xs font-semibold
         </button>
       </div>
 
-      <div v-if="fetching" class="flex min-h-[28px] items-center gap-2 text-sm text-paw-orange-300" role="status">
+      <div v-if="fetching" class="flex min-h-[28px] items-center gap-2 text-sm text-paw-orange-300" data-testid="loading">
         <span class="h-4 w-4 animate-spin rounded-full border-2 border-paw-orange-400 border-t-transparent" aria-hidden="true" />
         Chargement des lieux…
       </div>
 
       <div v-if="error && !fetching" class="flex items-center justify-between gap-3 text-sm text-white/90" role="alert">
         <span>{{ error }}</span>
-        <button type="button" :class="[actionBtn, 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-500/40']" @click="$emit('retry')">
+        <button type="button" :class="[actionBtn, orangeBtn]" @click="$emit('retry')">
           Réessayer
         </button>
       </div>
