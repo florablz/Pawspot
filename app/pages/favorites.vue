@@ -79,7 +79,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <p v-if="actionError" class="mx-3 mt-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-300" role="alert">{{ actionError }}</p>
+      <p v-if="actionError" class="mx-3 mt-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-200" role="alert">{{ actionError }}</p>
 
       <div v-if="loading" class="flex flex-1 items-center justify-center" role="status">
         <span class="h-6 w-6 animate-spin rounded-full border-2 border-paw-orange-400 border-t-transparent" aria-hidden="true" />
@@ -121,7 +121,7 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-paw-orange-400 transition hover:bg-paw-red-700/30 hover:text-paw-red-300"
+            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-paw-orange-400 transition hover:bg-paw-red-700/30 hover:text-paw-red-200"
             :aria-label="`Retirer ${fav.name} des favoris`"
             @click="removeFavorite(fav)"
           >
@@ -171,7 +171,7 @@ onMounted(() => {
         <PlaceDetails :place="selected" @favorite-change="onFavoriteChange(selected.id, $event)">
           <button
             type="button"
-            class="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-paw-red-300/30 px-5 text-sm font-medium text-paw-red-300 transition hover:bg-paw-red-700/20 active:scale-[0.98]"
+            class="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-paw-red-300/30 px-5 text-sm font-medium text-paw-red-200 transition hover:bg-paw-red-700/20 active:scale-[0.98]"
             @click="removeFavorite(selected)"
           >
             Retirer des favoris

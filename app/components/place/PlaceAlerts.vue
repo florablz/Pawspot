@@ -101,14 +101,14 @@ watch(() => props.placeId, () => {
     <div class="mb-4 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2">
         <h3 class="text-sm font-semibold text-white">Signalements</h3>
-        <span v-if="alerts.length" class="rounded-full bg-paw-red-700/30 px-2 py-0.5 text-xs text-paw-red-300">
+        <span v-if="alerts.length" class="rounded-full bg-paw-red-700/30 px-2 py-0.5 text-xs text-paw-red-200">
           {{ alerts.length }}<span class="sr-only"> signalement{{ alerts.length > 1 ? 's' : '' }}</span>
         </span>
       </div>
       <button
         v-if="loggedIn && !showForm"
         type="button"
-        class="min-h-[44px] rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-300 transition hover:bg-paw-red-700/50"
+        class="min-h-[44px] rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-200 transition hover:bg-paw-red-700/50"
         @click="showForm = true"
       >
         + Signaler
@@ -116,7 +116,7 @@ watch(() => props.placeId, () => {
       <NuxtLink
         v-else-if="!loggedIn"
         to="/login"
-        class="flex min-h-[44px] items-center rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-300 transition hover:bg-paw-red-700/50"
+        class="flex min-h-[44px] items-center rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-200 transition hover:bg-paw-red-700/50"
       >
         Connecte-toi pour signaler
       </NuxtLink>
@@ -131,7 +131,7 @@ watch(() => props.placeId, () => {
             :key="opt.type"
             class="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ring-1 transition focus-within:ring-2 focus-within:ring-paw-orange-300"
             :class="alertType === opt.type
-              ? 'bg-paw-red-700/30 text-paw-red-300 ring-paw-red-300/60'
+              ? 'bg-paw-red-700/30 text-paw-red-200 ring-paw-red-300/60'
               : 'bg-paw-brown-900/60 text-white/70 ring-white/10 hover:text-white'"
           >
             <input v-model="alertType" type="radio" name="alert-type" :value="opt.type" class="sr-only">
@@ -147,7 +147,7 @@ watch(() => props.placeId, () => {
       <textarea
         id="alert-description"
         v-model="description"
-        class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/40 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
+        class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/60 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
         rows="2"
         :maxlength="ALERT_DESCRIPTION_MAX_LENGTH"
         :required="descriptionRequired"
@@ -155,7 +155,7 @@ watch(() => props.placeId, () => {
       />
       <p class="mb-3 text-right text-[11px] text-white/50">{{ description.length }} / {{ ALERT_DESCRIPTION_MAX_LENGTH }}</p>
 
-      <div v-if="errorMsg" class="mb-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-300" role="alert">{{ errorMsg }}</div>
+      <div v-if="errorMsg" class="mb-3 rounded-xl bg-paw-red-700/20 px-3 py-2 text-xs text-paw-red-200" role="alert">{{ errorMsg }}</div>
 
       <div class="flex gap-2">
         <button
@@ -195,7 +195,7 @@ watch(() => props.placeId, () => {
         :class="SEVERE.has(alert.type) ? 'bg-paw-red-700/20' : 'bg-paw-yellow-400/10'"
       >
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-semibold" :class="SEVERE.has(alert.type) ? 'text-paw-red-300' : 'text-paw-yellow-300'">
+          <span class="text-xs font-semibold" :class="SEVERE.has(alert.type) ? 'text-paw-red-200' : 'text-paw-yellow-300'">
             {{ ALERT_LABELS[alert.type] ?? 'Signalement' }}
           </span>
           <time class="text-xs text-white/50" :datetime="alert.createdAt">{{ formatTimeAgo(alert.createdAt) }}</time>

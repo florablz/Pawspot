@@ -54,16 +54,16 @@ async function onSubmit() {
           >
         </div>
 
-        <div v-if="errorMsg" class="rounded-xl bg-red-500/10 px-4 py-2.5 text-sm text-red-400">
+        <div v-if="errorMsg" class="rounded-xl bg-paw-red-700/20 px-4 py-2.5 text-sm text-paw-red-200">
           {{ errorMsg }}
         </div>
 
         <button
           type="submit"
           :disabled="submitting"
-          class="flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange-500 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-paw-orange-500/25 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
+          class="flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange-500 px-5 py-3.5 text-sm font-semibold text-paw-brown-900 shadow-lg shadow-paw-orange-500/25 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
         >
-          <div v-if="submitting" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          <div v-if="submitting" class="h-4 w-4 animate-spin rounded-full border-2 border-paw-brown-900 border-t-transparent" />
           {{ submitting ? 'Connexion…' : 'Se connecter' }}
         </button>
       </form>

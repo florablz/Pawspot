@@ -25,6 +25,14 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  /* Variante opaque pour les contrôles posés sur la carte : texte lisible (AA) même sur des tuiles claires. */
+  .glass-strong {
+    background: rgba(44, 24, 16, 0.9);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
   .glass-light {
     background: rgba(62, 39, 35, 0.35);
     backdrop-filter: blur(16px);
