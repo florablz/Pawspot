@@ -113,7 +113,7 @@ describe('GET /api/places/:id', () => {
     expect(res.status).toBe(503)
     expect(res.body).toMatchObject({
       statusCode: 503,
-      message: 'Le service des lieux est momentanément indisponible, réessaie dans quelques instants',
+      message: 'Le service des lieux est momentanément indisponible, réessayez dans quelques instants.',
     })
     expect(res.text).not.toMatch(/HTTP 504|overpass-api|kumi/i)
   })
