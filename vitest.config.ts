@@ -27,6 +27,9 @@ export default defineConfig({
       {
         plugins: [vue()],
         resolve: { alias },
+        // Code côté client (happy-dom) : `import.meta.client` vaut true comme dans le
+        // navigateur sous Nuxt (sinon `undefined` et les écouteurs ne sont jamais posés).
+        define: { 'import.meta.client': 'true', 'import.meta.server': 'false' },
         test: {
           name: 'app',
           environment: 'happy-dom',
