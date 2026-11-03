@@ -45,3 +45,56 @@ jobs:
 
       - name: Tests
         run: npm test
+
+  e2e:
+    name: Tests de bout en bout (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Aucun secret : base SQLite locale éphémère, Overpass mocké par les tests.
+      DATABASE_URL: file:pawspot.db
+      DATABASE_AUTH_TOKEN: ''
+      APP_URL: http://localhost:3000
+      NUXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      # Job inactif tant qu'il n'y a ni configuration Playwright ni test e2e
+      # (`hashFiles` n'est pas utilisable dans le `if` d'un job : on teste ici).
+      - name: Présence de tests e2e
+        id: detect
+        run: |
+          if [ -f playwright.config.ts ] && find tests/e2e e2e -name '*.spec.ts' 2>/dev/null | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Aucun test e2e (playwright.config.ts + *.spec.ts) : job ignoré."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.present == 'true'
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Installation
+        if: steps.detect.outputs.present == 'true'
+        run: npm ci
+
+      - name: Navigateurs Playwright
+        if: steps.detect.outputs.present == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Tests e2e
+        if: steps.detect.outputs.present == 'true'
+        run: npm run test:e2e
+
+      - name: Rapport Playwright
+        if: steps.detect.outputs.present == 'true' && failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
