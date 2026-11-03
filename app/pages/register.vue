@@ -16,7 +16,7 @@ async function onSubmit() {
   errorMsg.value = ''
 
   if (password.value !== confirmPassword.value) {
-    errorMsg.value = 'Les mots de passe ne correspondent pas'
+    errorMsg.value = 'Les deux mots de passe ne correspondent pas.'
     return
   }
 
@@ -25,7 +25,7 @@ async function onSubmit() {
     await register(email.value, username.value, password.value)
     await navigateTo(safeRedirect(route.query.redirect))
   } catch (err: unknown) {
-    errorMsg.value = getApiErrorMessage(err, 'Erreur lors de la creation du compte')
+    errorMsg.value = getApiErrorMessage(err, 'Impossible de créer le compte pour le moment.')
   } finally {
     submitting.value = false
   }
@@ -33,83 +33,55 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-[100dvh] items-center justify-center bg-paw-brown-900 px-4">
-    <div class="glass w-full max-w-sm rounded-3xl p-8">
+  <div class="flex h-[100dvh] items-center justify-center overflow-y-auto bg-paw-brown-900 px-4 py-6">
+    <div class="glass my-auto w-full max-w-sm rounded-3xl p-6 sm:p-8">
       <div class="mb-8 text-center">
         <img src="/logo/patte-de-chien.png" alt="PawSpot" class="mx-auto mb-4 h-12 w-12">
         <h1 class="text-2xl font-bold text-white">Créer un compte</h1>
-        <p class="mt-1 text-sm text-white/50">Rejoins la communauté PawSpot</p>
+        <p class="mt-1 text-sm text-white/70">Rejoignez la communauté PawSpot et partagez vos bonnes adresses.</p>
       </div>
 
       <form class="space-y-4" @submit.prevent="onSubmit">
-        <div>
-          <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-white/40">Pseudo</label>
-          <input
-            v-model="username"
-            type="text"
-            required
-            :minlength="USERNAME_MIN_LENGTH"
-            :maxlength="USERNAME_MAX_LENGTH"
-            autocomplete="username"
-            class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
-            placeholder="MonChien42"
-          >
-        </div>
+        <AuthField
+          id="register-username"
+          v-model="username"
+          label="Pseudo"
+          type="text"
+          autocomplete="username"
+          placeholder="MonChien42"
+          :minlength="USERNAME_MIN_LENGTH"
+          :maxlength="USERNAME_MAX_LENGTH"
+          :hint="`De ${USERNAME_MIN_LENGTH} à ${USERNAME_MAX_LENGTH} caractères, visible avec vos avis.`"
+        />
+        <AuthField id="register-email" v-model="email" label="E-mail" type="email" autocomplete="email" placeholder="vous@exemple.fr" />
+        <AuthField
+          id="register-password"
+          v-model="password"
+          label="Mot de passe"
+          type="password"
+          autocomplete="new-password"
+          :minlength="PASSWORD_MIN_LENGTH"
+          :hint="`${PASSWORD_MIN_LENGTH} caractères minimum.`"
+        />
+        <AuthField id="register-password-confirm" v-model="confirmPassword" label="Confirmer le mot de passe" type="password" autocomplete="new-password" />
 
-        <div>
-          <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-white/40">Email</label>
-          <input
-            v-model="email"
-            type="email"
-            required
-            autocomplete="email"
-            class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
-            placeholder="ton@email.com"
-          >
-        </div>
-
-        <div>
-          <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-white/40">Mot de passe</label>
-          <input
-            v-model="password"
-            type="password"
-            required
-            :minlength="PASSWORD_MIN_LENGTH"
-            autocomplete="new-password"
-            class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
-            :placeholder="`${PASSWORD_MIN_LENGTH} caractères minimum`"
-          >
-        </div>
-
-        <div>
-          <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-white/40">Confirmer le mot de passe</label>
-          <input
-            v-model="confirmPassword"
-            type="password"
-            required
-            autocomplete="new-password"
-            class="w-full rounded-xl bg-paw-brown-800/80 px-4 py-3 text-sm text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
-            placeholder="••••••••"
-          >
-        </div>
-
-        <div v-if="errorMsg" class="rounded-xl bg-paw-red-700/20 px-4 py-2.5 text-sm text-paw-red-200">
+        <p v-if="errorMsg" class="rounded-xl bg-paw-red-700/20 px-4 py-2.5 text-sm text-paw-red-200" role="alert">
           {{ errorMsg }}
-        </div>
+        </p>
 
         <button
           type="submit"
           :disabled="submitting"
-          class="flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange-500 px-5 py-3.5 text-sm font-semibold text-paw-brown-900 shadow-lg shadow-paw-orange-500/25 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
+          class="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-paw-orange-500 px-5 py-3.5 text-sm font-semibold text-paw-brown-900 shadow-lg shadow-paw-orange-500/25 transition hover:bg-paw-orange-400 active:scale-[0.98] disabled:opacity-50"
         >
-          <div v-if="submitting" class="h-4 w-4 animate-spin rounded-full border-2 border-paw-brown-900 border-t-transparent" />
+          <span v-if="submitting" class="h-4 w-4 animate-spin rounded-full border-2 border-paw-brown-900 border-t-transparent" aria-hidden="true" />
           {{ submitting ? 'Création…' : 'Créer mon compte' }}
         </button>
       </form>
 
-      <p class="mt-6 text-center text-sm text-white/40">
+      <p class="mt-6 text-center text-sm text-white/70">
         Déjà inscrit ?
-        <NuxtLink :to="loginLink" class="text-paw-orange-400 hover:text-paw-orange-300 transition">
+        <NuxtLink :to="loginLink" class="inline-flex min-h-[44px] items-center font-medium text-paw-orange-300 underline-offset-2 transition hover:text-paw-orange-200 hover:underline">
           Se connecter
         </NuxtLink>
       </p>
