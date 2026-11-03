@@ -11,7 +11,7 @@ import { requireAuth } from '../../utils/auth'
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const { placeId } = await readValidatedBodyOr400(event, favoriteBodySchema)
-  await requirePlace(placeId)
+  await requirePlace(placeId, { allowOverpass: true })
 
   await db.insert(favorites)
     .values({ userId: user.id, placeId })

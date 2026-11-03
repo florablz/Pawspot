@@ -12,7 +12,7 @@ import { reviewBodySchema } from '~~/shared/schemas'
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const { placeId, rating, comment, photos } = await readValidatedBodyOr400(event, reviewBodySchema)
-  await requirePlace(placeId)
+  await requirePlace(placeId, { allowOverpass: true })
 
   const inserted = await db.insert(reviews).values({
     placeId,
