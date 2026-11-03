@@ -185,7 +185,7 @@ onMounted(() => {
         leave-from-class="opacity-100 translate-y-0"
         leave-to-class="opacity-0 -translate-y-2"
       >
-        <div v-if="showSearchHere" class="pointer-events-none absolute inset-x-0 top-[128px] z-[1000] flex justify-center">
+        <div v-if="showSearchHere" class="pointer-events-none absolute inset-x-0 top-[132px] z-[1000] flex justify-center">
           <button
             type="button"
             class="pointer-events-auto glass-strong flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-medium text-white shadow-lg transition hover:bg-paw-brown-700 active:scale-95"
@@ -219,6 +219,7 @@ onMounted(() => {
           :loaded-count="places.length"
           :loaded="!!loadedView"
           :filters-active="filtersActive"
+          :confirmed-only="confirmedOnly"
           :fetching="fetching"
           :error="searchError"
           :stale="stale"
@@ -228,6 +229,7 @@ onMounted(() => {
           :location-message="locationMessage"
           @retry="retry"
           @clear-filters="clearFilters"
+          @disable-confirmed="confirmedOnly = false"
         />
       </div>
     </section>

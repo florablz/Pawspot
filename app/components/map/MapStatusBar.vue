@@ -11,6 +11,8 @@ const props = defineProps<{
   /** Une zone a déjà été chargée. */
   loaded: boolean
   filtersActive: boolean
+  /** Filtre « Chiens acceptés confirmés uniquement » actif. */
+  confirmedOnly?: boolean
   fetching: boolean
   error: string | null
   stale: boolean
@@ -24,6 +26,7 @@ const props = defineProps<{
 defineEmits<{
   'retry': []
   'clear-filters': []
+  'disable-confirmed': []
 }>()
 
 const countText = computed(() => {
@@ -32,8 +35,14 @@ const countText = computed(() => {
   return props.filtersActive && props.loadedCount !== n ? `${base} sur ${props.loadedCount}` : base
 })
 
+/** Le filtre « confirmés » vide la carte alors que des lieux sont chargés. */
+const confirmedEmpty = computed(() =>
+  !!props.confirmedOnly && props.loaded && !props.fetching && !props.error && props.count === 0 && props.loadedCount > 0,
+)
+
 const emptyText = computed(() => {
   if (!props.loaded || props.fetching || props.error || props.count > 0) return null
+  if (confirmedEmpty.value) return null
   if (props.filtersActive && props.loadedCount > 0) return 'Aucun lieu ne correspond à vos filtres.'
   if (props.zoomTooLow) return null
   return 'Aucun lieu trouvé dans cette zone.'
@@ -113,6 +122,19 @@ const actionBtn = 'min-h-[44px] shrink-0 rounded-full px-4 text-xs font-semibold
       </div>
 
       <p v-if="emptyText" class="pb-1 text-xs text-white/70">{{ emptyText }}</p>
+
+      <div v-if="confirmedEmpty" class="flex flex-col gap-2 pb-1" data-testid="notice-confirmed-empty">
+        <p class="text-xs text-white/90">
+          Aucun lieu n'est encore confirmé par la communauté ici. Désactivez ce filtre pour voir les lieux probables.
+        </p>
+        <button
+          type="button"
+          :class="[actionBtn, 'self-start bg-paw-green-700/30 text-paw-green-300 hover:bg-paw-green-700/50']"
+          @click="$emit('disable-confirmed')"
+        >
+          Désactiver le filtre « Confirmés »
+        </button>
+      </div>
     </div>
   </div>
 </template>
