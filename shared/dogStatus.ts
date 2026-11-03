@@ -25,7 +25,7 @@ export type DogStatus = (typeof DOG_STATUSES)[number]
 
 /** Libellés d'affichage (tableau §3.8 bis). */
 export const DOG_STATUS_LABELS: Record<DogStatus, { emoji: string; label: string }> = {
-  refused: { emoji: '🔴', label: 'Chiens refusés (signalé par la communauté)' },
+  refused: { emoji: '🔴', label: 'Chiens refusés' },
   confirmed: { emoji: '🟢', label: 'Accepté, y compris à l\'intérieur' },
   confirmed_outside_only: { emoji: '🟢', label: 'Accepté en terrasse / extérieur' },
   osm_yes: { emoji: '🟢', label: 'Accepté' },
