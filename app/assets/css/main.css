@@ -97,10 +97,19 @@
 
 /* Leaflet controls restyle */
 .leaflet-control-zoom a {
-  background: rgba(44, 24, 16, 0.7) !important;
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  font-size: 22px !important;
+  background: rgba(44, 24, 16, 0.9) !important;
   backdrop-filter: blur(12px) !important;
   color: #ffffff !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.leaflet-control-zoom a:focus-visible {
+  outline: 3px solid #FF9E40;
+  outline-offset: -3px;
 }
 
 .leaflet-control-zoom a:hover {

@@ -19,6 +19,8 @@ const emit = defineEmits<{
 /** Vue « France entière » (géolocalisation refusée ou en attente). */
 const FRANCE_VIEW = { lat: 46.6, lng: 2.4, zoom: 6 }
 const USER_ZOOM = 14
+/** Taille minimale de la zone cliquable d'un marqueur (px). */
+const MARKER_HIT_SIZE = 44
 
 const mapEl = ref<HTMLElement | null>(null)
 let map: Leaflet.Map | null = null
@@ -33,6 +35,8 @@ function createPlaceIcon(lib: typeof Leaflet, place: Place, selected: boolean): 
   const emoji = category?.icon ?? DEFAULT_CATEGORY_ICON
   const dot = DOG_STATUS_MARKER[place.dogStatus] ?? DOG_STATUS_MARKER.unknown
   const size = selected ? 44 : 36
+  /** Zone tactile : 44 px au moins, le disque visible est centré dedans. */
+  const hit = Math.max(MARKER_HIT_SIZE, size)
   const dotSize = selected ? 20 : 18
   // Symbole de deux caractères (✓✓) : police plus petite et lettres resserrées.
   const glyphSize = dot.glyph.length > 1 ? dotSize - 10 : dotSize - 7
@@ -44,6 +48,10 @@ function createPlaceIcon(lib: typeof Leaflet, place: Place, selected: boolean): 
   return lib.divIcon({
     className: '',
     html: `<div style="
+      width:${hit}px;height:${hit}px;
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;
+    "><div style="
       position:relative;
       width:${size}px;height:${size}px;
       background:${color};
@@ -64,9 +72,9 @@ function createPlaceIcon(lib: typeof Leaflet, place: Place, selected: boolean): 
       font:700 ${glyphSize}px/1 system-ui,sans-serif;
       letter-spacing:${dot.glyph.length > 1 ? '-1px' : '0'};
       display:flex;align-items:center;justify-content:center;
-    ">${dot.glyph}</span></div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    ">${dot.glyph}</span></div></div>`,
+    iconSize: [hit, hit],
+    iconAnchor: [hit / 2, hit / 2],
     popupAnchor: [0, -size / 2],
   })
 }
@@ -147,9 +155,11 @@ onMounted(async () => {
   const startLng = located ? props.longitude! : FRANCE_VIEW.lng
   const startZoom = located ? USER_ZOOM : FRANCE_VIEW.zoom
 
-  const leafletMap = L.map(mapEl.value, { zoomControl: true })
+  const leafletMap = L.map(mapEl.value, { zoomControl: false })
     .setView([startLat, startLng], startZoom)
   map = leafletMap
+  // Boutons de zoom en français (taille 44 px dans main.css).
+  L.control.zoom({ zoomInTitle: 'Zoomer', zoomOutTitle: 'Dézoomer' }).addTo(leafletMap)
 
   // Standard light map (OpenStreetMap default)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
