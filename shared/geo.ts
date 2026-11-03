@@ -158,3 +158,51 @@ export function tilesToRange(tiles: readonly Tile[]): TileRange | null {
 export function tileKey(t: Tile): string {
   return `${t.z}/${t.x}/${t.y}`
 }
+
+// ---------------------------------------------------------------------------
+// Couverture : France métropolitaine (avec la Corse), DROM et COM
+// ---------------------------------------------------------------------------
+
+export interface CoverageArea {
+  key: string
+  label: string
+  bbox: Bbox
+}
+
+/**
+ * Boîtes APPROXIMATIVES (avec une marge d'environ 0,1 à 0,5°) des territoires
+ * couverts par PawSpot. Overpass n'est interrogé que si l'emprise demandée en
+ * touche au moins une ; ailleurs, seul le cache est lu. La boîte métropolitaine
+ * déborde sur les pays voisins : c'est voulu (frontières, simplicité).
+ * Aucune boîte ne traverse l'antiméridien.
+ */
+export const COVERAGE_AREAS: readonly CoverageArea[] = [
+  { key: 'metropole', label: 'France métropolitaine et Corse', bbox: { minLon: -5.8, minLat: 41.2, maxLon: 10.0, maxLat: 51.6 } },
+  { key: 'guadeloupe', label: 'Guadeloupe', bbox: { minLon: -61.95, minLat: 15.75, maxLon: -60.9, maxLat: 16.6 } },
+  { key: 'martinique', label: 'Martinique', bbox: { minLon: -61.3, minLat: 14.3, maxLon: -60.75, maxLat: 14.95 } },
+  { key: 'guyane', label: 'Guyane', bbox: { minLon: -54.7, minLat: 2.0, maxLon: -51.5, maxLat: 5.9 } },
+  { key: 'reunion', label: 'La Réunion', bbox: { minLon: 55.15, minLat: -21.45, maxLon: 55.9, maxLat: -20.8 } },
+  { key: 'mayotte', label: 'Mayotte', bbox: { minLon: 44.9, minLat: -13.1, maxLon: 45.4, maxLat: -12.55 } },
+  { key: 'saint_pierre_miquelon', label: 'Saint-Pierre-et-Miquelon', bbox: { minLon: -56.5, minLat: 46.7, maxLon: -56.05, maxLat: 47.2 } },
+  { key: 'saint_barthelemy', label: 'Saint-Barthélemy', bbox: { minLon: -62.98, minLat: 17.83, maxLon: -62.75, maxLat: 17.98 } },
+  { key: 'saint_martin', label: 'Saint-Martin', bbox: { minLon: -63.2, minLat: 18.0, maxLon: -62.95, maxLat: 18.15 } },
+  { key: 'polynesie', label: 'Polynésie française', bbox: { minLon: -155.0, minLat: -28.2, maxLon: -134.0, maxLat: -7.6 } },
+  { key: 'nouvelle_caledonie', label: 'Nouvelle-Calédonie', bbox: { minLon: 163.4, minLat: -23.0, maxLon: 169.0, maxLat: -19.0 } },
+  { key: 'wallis_futuna', label: 'Wallis-et-Futuna', bbox: { minLon: -178.3, minLat: -14.5, maxLon: -176.0, maxLat: -13.0 } },
+]
+
+/** Vrai si les deux emprises se touchent (bords compris). */
+export function bboxIntersects(a: Bbox, b: Bbox): boolean {
+  return a.minLon <= b.maxLon && b.minLon <= a.maxLon && a.minLat <= b.maxLat && b.minLat <= a.maxLat
+}
+
+/** L'emprise touche-t-elle un territoire couvert (`COVERAGE_AREAS`) ? */
+export function bboxTouchesCoverage(b: Bbox): boolean {
+  return COVERAGE_AREAS.some(area => bboxIntersects(b, area.bbox))
+}
+
+/** Le point est-il dans un territoire couvert (`COVERAGE_AREAS`) ? Faux pour des coordonnées non finies. */
+export function isInCoverage(lat: number, lon: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false
+  return bboxTouchesCoverage({ minLon: lon, minLat: lat, maxLon: lon, maxLat: lat })
+}

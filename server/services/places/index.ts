@@ -11,14 +11,14 @@ import { nanoid } from 'nanoid'
 import { computeDogStatus, ALERT_VISIBILITY_DAYS } from '../../../shared/dogStatus'
 import type { DogStatusResult } from '../../../shared/dogStatus'
 import {
-  bboxCenter, CACHE_TILE_ZOOM, latToTileY, lonToTileX, tileKey, tileRangeForBbox,
+  bboxCenter, bboxTouchesCoverage, CACHE_TILE_ZOOM, isInCoverage, latToTileY, lonToTileX, tileKey, tileRangeForBbox,
   tileRangeSize, tileRangeToBbox, tilesInRange, tilesToRange,
 } from '../../../shared/geo'
 import type { Bbox, Tile, TileRange } from '../../../shared/geo'
 import { osmPlaceId, parsePlaceId } from '../../../shared/schemas'
 import type { Place, PlacesResponse } from '../../../shared/types'
 import type { Database } from '../../database'
-import { alerts, fetchedTiles, places } from '../../database/schema'
+import { alerts, fetchedTiles, osmLookupMisses, places } from '../../database/schema'
 import type { NewPlaceRow, PlaceRow } from '../../database/schema'
 import { elementToPlaceRow, rowToPlace } from './mapping'
 import type { CommunitySignals } from './mapping'
@@ -55,6 +55,8 @@ export const REFRESH_DEADLINE_CACHED_MS = 10_000
 export const REFRESH_DEADLINE_EMPTY_MS = 25_000
 /** Délai total de la lecture d'un seul élément (`ensurePlace`) : petite requête, 5 s par instance. */
 export const ELEMENT_DEADLINE_MS = 10_000
+/** Un id OSM trouvé introuvable / non éligible / hors couverture n'est pas redemandé à Overpass pendant 24 h. */
+export const OSM_MISS_TTL_MS = 24 * 60 * 60 * 1000
 
 export interface PlacesDeps extends OverpassDeps {
   db?: Database
@@ -269,6 +271,9 @@ export async function selectPlacesInBbox(bbox: Bbox, deps: PlacesDeps = {}, limi
 /**
  * Lieux d'une emprise pour `GET /api/places` :
  * - zoom < 11, ou plus de 64 tuiles z12 couvrant l'emprise → pas d'Overpass, `zoomTooLow: true` ;
+ * - emprise qui ne touche aucun territoire couvert (`COVERAGE_AREAS` de shared/geo.ts :
+ *   France métropolitaine, Corse, DROM, COM) → pas d'Overpass, cache seulement,
+ *   `outsideCoverage: true` (champ absent sinon) ;
  * - sinon, les tuiles z12 absentes ou chargées il y a plus de 7 jours sont rafraîchies
  *   (au plus 16 par appel, les plus proches du centre ; `incomplete: true` s'il en reste) ;
  * - échec d'Overpass sur les deux instances → données en base + `stale: true` (pas d'exception) ;
@@ -283,13 +288,14 @@ export async function getPlacesInBbox(params: { bbox: Bbox; zoom: number }, deps
   let stale = false
   let incomplete = false
   const zoomTooLow = params.zoom < MIN_OVERPASS_ZOOM || tileRangeSize(covering) > MAX_COVERING_TILES
-  if (!zoomTooLow) {
+  const outsideCoverage = !bboxTouchesCoverage(params.bbox)
+  if (!zoomTooLow && !outsideCoverage) {
     const result = await refreshTiles(db, covering, bboxCenter(params.bbox), now, { ...deps, db, now: () => now })
     stale = result.failed
     incomplete = result.remaining > 0
   }
   const { places: list, truncated } = await selectPlacesInBbox(params.bbox, { ...deps, db, now: () => now })
-  return { places: list, stale, zoomTooLow, incomplete, truncated }
+  return { places: list, stale, zoomTooLow, incomplete, truncated, ...(outsideCoverage ? { outsideCoverage: true } : {}) }
 }
 
 export async function getPlaceRow(id: string, deps: PlacesDeps = {}): Promise<PlaceRow | null> {
@@ -303,25 +309,70 @@ export async function getPlaceById(id: string, deps: PlacesDeps = {}): Promise<P
   return row ? rowToPlace(row, deps.now?.() ?? new Date()) : null
 }
 
+export interface EnsurePlaceOptions {
+  /**
+   * `false` : ne jamais interroger Overpass (ex. visiteur non connecté) ; un id OSM
+   * absent de la base donne alors `null`. Par défaut `true`.
+   */
+  allowOverpass?: boolean
+}
+
+/** L'id OSM a-t-il été trouvé introuvable il y a moins de `OSM_MISS_TTL_MS` ? */
+export async function isRecentOsmMiss(id: string, deps: PlacesDeps = {}): Promise<boolean> {
+  const db = await getDb(deps)
+  const now = deps.now?.() ?? new Date()
+  const row = await db.select({ checkedAt: osmLookupMisses.checkedAt }).from(osmLookupMisses)
+    .where(eq(osmLookupMisses.id, id)).get()
+  return Boolean(row && row.checkedAt.getTime() > now.getTime() - OSM_MISS_TTL_MS)
+}
+
+/** Mémorise un id OSM introuvable (et purge les entrées de plus de 24 h). */
+export async function recordOsmMiss(id: string, deps: PlacesDeps = {}): Promise<void> {
+  const db = await getDb(deps)
+  const now = deps.now?.() ?? new Date()
+  await db.batch([
+    db.delete(osmLookupMisses).where(lt(osmLookupMisses.checkedAt, new Date(now.getTime() - OSM_MISS_TTL_MS))),
+    db.insert(osmLookupMisses).values({ id, checkedAt: now })
+      .onConflictDoUpdate({ target: osmLookupMisses.id, set: { checkedAt: now } }),
+  ])
+}
+
 /**
  * Garantit qu'un lieu existe en base avant d'y rattacher un favori, un avis ou une alerte.
  * - présent en base → renvoyé ;
- * - id OSM absent → lu sur Overpass (un seul élément), mis en cache s'il est éligible ;
- * - sinon (id `user:` inconnu, élément introuvable ou non éligible) → `null` (404 côté route).
+ * - id OSM absent → lu sur Overpass (un seul élément), mis en cache s'il est éligible
+ *   et dans un territoire couvert (`isInCoverage`) ;
+ * - sinon (id `user:` inconnu, élément introuvable, non éligible ou hors couverture) →
+ *   `null` (404 côté route). Un id OSM introuvable est mémorisé 24 h
+ *   (`osm_lookup_misses`) : pendant ce délai, `null` sans rappeler Overpass ;
+ * - `options.allowOverpass === false` → jamais d'appel Overpass (`null` si absent).
  * @throws OverpassError si Overpass est injoignable ou en pause après un échec récent
  *   (immédiat dans ce cas ; 503 côté route). Délai total : `ELEMENT_DEADLINE_MS`.
+ *   Un échec n'est pas mémorisé comme « introuvable ».
  */
-export async function ensurePlace(id: string, deps: PlacesDeps = {}): Promise<Place | null> {
-  const existing = await getPlaceById(id, deps)
+export async function ensurePlace(id: string, deps: PlacesDeps = {}, options: EnsurePlaceOptions = {}): Promise<Place | null> {
+  const db = await getDb(deps)
+  const local = { ...deps, db }
+  const existing = await getPlaceById(id, local)
   if (existing) return existing
   const parsed = parsePlaceId(id)
   if (!parsed || parsed.source !== 'osm') return null
+  if (options.allowOverpass === false) return null
+  if (await isRecentOsmMiss(id, local)) return null
   const elements = await runOverpassQuery(buildOverpassElementQuery(parsed.osmType, parsed.osmId), {
     ...deps,
     overpassDeadlineMs: deps.overpassDeadlineMs ?? ELEMENT_DEADLINE_MS,
   })
-  const rows = await upsertOsmElements(elements.filter(el => osmPlaceId(el.type, el.id) === id), deps)
-  return rows.length ? getPlaceById(id, deps) : null
+  const found = elements.filter(el => osmPlaceId(el.type, el.id) === id)
+    .filter((el) => {
+      const lat = el.lat ?? el.center?.lat
+      const lon = el.lon ?? el.center?.lon
+      return typeof lat === 'number' && typeof lon === 'number' && isInCoverage(lat, lon)
+    })
+  const rows = await upsertOsmElements(found, local)
+  if (rows.length) return getPlaceById(id, local)
+  await recordOsmMiss(id, local)
+  return null
 }
 
 /**
