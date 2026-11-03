@@ -152,8 +152,10 @@ Toutes les variables sont documentées dans [`.env.example`](.env.example). Le f
 |---|---|---|
 | `DATABASE_URL` | oui | Adresse de la base. En local : `file:pawspot.db`. En production : URL Turso (`libsql://…`). |
 | `DATABASE_AUTH_TOKEN` | en prod | Jeton Turso. Vide en local. |
-| `APP_URL` | oui | URL publique de l'app, sans `/` final (`http://localhost:3000` en local, `https://<ton-projet>.vercel.app` en production). Sert aux liens d'emails et aux balises de partage (Open Graph, canonique). Lue au build : redéploie après l'avoir modifiée. |
-| `TILE_URL` | non | Modèle d'URL des tuiles de carte. Tuiles OSM par défaut ; un fournisseur gratuit (OpenFreeMap, MapTiler, Stadia…) en production. |
+| `APP_URL` | oui | URL publique de l'app, sans `/` final (`http://localhost:3000` en local, `https://<votre-projet>.vercel.app` en production). Sert aux liens d'emails et aux balises de partage (Open Graph, canonique). Lue au build : redéployez après l'avoir modifiée. |
+| `TILE_URL` | non | Modèle d'URL des tuiles de carte (avec `{z}`, `{x}`, `{y}`). Par défaut : `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, suffisant en développement. En production, un fournisseur avec offre gratuite (OpenFreeMap, MapTiler, Stadia…) : le serveur de tuiles OSM interdit l'usage intensif. Lue au build. |
+| `TILE_ATTRIBUTION` | non | Mention de crédit affichée sur la carte (HTML autorisé). Par défaut : « © les contributeurs d'OpenStreetMap » avec un lien vers la page de copyright OSM. À adapter si le fournisseur de tuiles impose sa mention. Lue au build. |
+| `NOMINATIM_URL` | non | Adresse de base du service de recherche d'adresses Nominatim, **sans** `/search` ni `/` final. Par défaut : `https://nominatim.openstreetmap.org`. Exemple pour un serveur local de test de bout en bout : `http://127.0.0.1:8088`. |
 | `OVERPASS_ENDPOINTS` | non | Serveurs Overpass à essayer, dans l'ordre : URLs complètes se terminant par `/api/interpreter`, séparées par des virgules. Les entrées invalides sont ignorées ; si aucune n'est valide (ou si la variable est absente), la liste par défaut est utilisée (overpass-api.de, maps.mail.ru, overpass.private.coffee, overpass.kumi.systems). |
 | `PREFETCH_ALLOW_REMOTE` | non | `1` autorise `npm run places:prefetch` à écrire dans une base distante (Turso). Absent par défaut : le script n'accepte qu'une base locale. |
 | `PAWSPOT_MIGRATIONS_DIR` | non | Dossier des migrations. Utile seulement si le serveur tourne avec une base locale depuis un dossier situé hors du dépôt. À laisser vide sinon. |
@@ -187,6 +189,7 @@ La mise en ligne gratuite (Vercel + Turso + Cloudflare R2 + Resend) est prévue 
 Points déjà connus pour la phase 4 :
 
 - **Migrations en production** : avec une base distante (Turso), les migrations ne sont **pas** appliquées automatiquement. Il faudra lancer `npm run db:migrate` (avec les variables Turso) avant chaque build de production.
+- **Tuiles de la carte** : le serveur de tuiles OpenStreetMap (valeur par défaut de `TILE_URL`) interdit l'usage intensif. En production, il faudra choisir un fournisseur avec offre gratuite (par exemple OpenFreeMap), renseigner `TILE_URL` et, si le fournisseur l'exige, `TILE_ATTRIBUTION`, puis relancer un déploiement.
 - **Durée d'exécution des requêtes** : la route `/api/places` peut mettre jusqu'à environ 40 secondes quand Overpass est lent (zone jamais chargée). L'hébergeur devra autoriser **au moins 45 secondes** d'exécution par requête. Sur Vercel, la limite par défaut sans « Fluid compute » est de 10 secondes : il faudra la relever (réglage `maxDuration`) au moment du déploiement.
 
 ## Sources et licences
