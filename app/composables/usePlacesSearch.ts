@@ -28,6 +28,8 @@ export const usePlacesSearch = () => {
   const searchError = ref<string | null>(null)
   const stale = ref(false)
   const zoomTooLow = ref(false)
+  /** L'emprise ne touche aucun territoire français (lieux lus en cache seulement). */
+  const outsideCoverage = ref(false)
   const truncated = ref(false)
   const incomplete = ref(false)
   /** Vue de la carte des derniers lieux affichés (`null` tant que rien n'est chargé). */
@@ -41,6 +43,7 @@ export const usePlacesSearch = () => {
     places.value = data.places
     stale.value = data.stale
     zoomTooLow.value = data.zoomTooLow
+    outsideCoverage.value = data.outsideCoverage === true
     truncated.value = data.truncated
     incomplete.value = data.incomplete
     loadedView.value = view
@@ -98,6 +101,7 @@ export const usePlacesSearch = () => {
     searchError,
     stale,
     zoomTooLow,
+    outsideCoverage,
     truncated,
     incomplete,
     loadedView,

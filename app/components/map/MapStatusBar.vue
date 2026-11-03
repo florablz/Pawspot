@@ -19,6 +19,8 @@ const props = defineProps<{
   error: string | null
   stale: boolean
   zoomTooLow: boolean
+  /** La zone ne touche aucun territoire français (hors couverture de PawSpot). */
+  outsideCoverage?: boolean
   truncated: boolean
   incomplete: boolean
   /** Message quand la géolocalisation a échoué et que rien n'est chargé. */
@@ -53,7 +55,7 @@ const emptyText = computed(() => {
   if (!props.loaded || props.fetching || props.error || props.count > 0) return null
   if (confirmedEmpty.value) return null
   if (props.filtersActive && props.loadedCount > 0) return 'Aucun lieu ne correspond à vos filtres.'
-  if (props.zoomTooLow) return null
+  if (props.zoomTooLow || props.outsideCoverage) return null
   return 'Aucun lieu trouvé dans cette zone.'
 })
 
@@ -73,7 +75,10 @@ const orangeBtn = 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-
     <p v-if="locationMessage" :class="notice" data-testid="notice-location">
       <span aria-hidden="true">📍</span> {{ locationMessage }}
     </p>
-    <p v-if="zoomTooLow && loaded" :class="notice" data-testid="notice-zoom">
+    <p v-if="outsideCoverage && loaded" :class="notice" data-testid="notice-outside-coverage">
+      <span aria-hidden="true">🗺️</span> PawSpot couvre la France et les territoires d'outre-mer : revenez sur une zone française pour voir les lieux.
+    </p>
+    <p v-if="zoomTooLow && loaded && !outsideCoverage" :class="notice" data-testid="notice-zoom">
       <span aria-hidden="true">🔍</span> Zoomez sur une ville pour voir tous les lieux.
     </p>
     <p v-if="truncated" :class="notice" data-testid="notice-truncated">
