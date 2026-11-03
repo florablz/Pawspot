@@ -75,6 +75,8 @@ function searchHere() {
 function onSelectPlace(place: Place) {
   selectedPlace.value = place
   nextTick(() => {
+    // Focus sur le titre de la fiche (lecteurs d'écran, clavier), puis défilement.
+    detailSection.value?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
     detailSection.value?.scrollIntoView({ behavior: 'smooth' })
   })
 }
@@ -107,64 +109,14 @@ onMounted(() => {
     class="h-[100dvh] w-full overflow-y-auto scroll-smooth snap-y snap-mandatory"
   >
     <section class="relative h-[100dvh] w-full shrink-0 snap-start" aria-label="Carte">
-      <!-- Conteneur dimensionné dès le SSR, avant l'hydratation de la carte -->
-      <div class="absolute inset-0">
-        <MapPawspotMap
-          ref="mapRef"
-          :latitude="latitude"
-          :longitude="longitude"
-          :places="filteredPlaces"
-          :selected-place="selectedPlace"
-          @update:view="onViewChange"
-          @select-place="onSelectPlace"
-        />
-      </div>
-
-      <div v-if="loading" class="pointer-events-none absolute inset-0 z-[1000] flex items-center justify-center">
-        <div class="glass-strong rounded-2xl px-6 py-4 text-center" role="status">
-          <div class="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-2 border-paw-orange-400 border-t-transparent" aria-hidden="true" />
-          <p class="text-sm text-white">Localisation…</p>
-        </div>
-      </div>
-
-      <!-- Barre du haut -->
+      <!-- Contrôles avant la carte dans l'ordre du DOM : la tabulation les atteint en premier. -->
       <div class="pointer-events-none absolute inset-x-0 top-0 z-[1000] p-3">
-        <div class="pointer-events-auto glass-strong mx-auto flex max-w-2xl items-center gap-2 rounded-2xl py-1 pl-4 pr-1">
-          <img src="/logo/patte-de-chien.png" alt="PawSpot" class="h-7 w-7 object-contain">
-          <div class="relative min-w-0 flex-1">
-            <label for="place-name-filter" class="sr-only">Filtrer les lieux de la zone par nom</label>
-            <input
-              id="place-name-filter"
-              v-model="searchQuery"
-              type="search"
-              enterkeyhint="search"
-              placeholder="Filtrer les lieux par nom…"
-              class="min-h-[44px] w-full bg-transparent pr-11 text-sm text-white placeholder-white/70 outline-none [&::-webkit-search-cancel-button]:hidden"
-            >
-            <button
-              v-if="searchQuery"
-              type="button"
-              aria-label="Effacer la recherche"
-              class="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-white/80 hover:text-white"
-              @click="searchQuery = ''"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <button
-            type="button"
-            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paw-orange-500/20 text-paw-orange-300 transition hover:bg-paw-orange-500/40"
-            :aria-label="localized ? 'Recentrer sur ma position' : 'Me localiser'"
-            @click="locateMe"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="3" /><path d="M12 2v4m0 12v4m10-10h-4M6 12H2" />
-            </svg>
-          </button>
-          <AuthUserMenu />
-        </div>
+        <SearchTopBar
+          v-model:query="searchQuery"
+          :localized="localized"
+          class="pointer-events-auto mx-auto max-w-2xl"
+          @locate="locateMe"
+        />
       </div>
 
       <!-- Filtres -->
@@ -198,6 +150,26 @@ onMounted(() => {
           </button>
         </div>
       </Transition>
+
+      <!-- Conteneur dimensionné dès le SSR ; `isolate` garde les contrôles Leaflet sous les barres. -->
+      <div class="absolute inset-0 isolate">
+        <MapPawspotMap
+          ref="mapRef"
+          :latitude="latitude"
+          :longitude="longitude"
+          :places="filteredPlaces"
+          :selected-place="selectedPlace"
+          @update:view="onViewChange"
+          @select-place="onSelectPlace"
+        />
+      </div>
+
+      <div v-if="loading" class="pointer-events-none absolute inset-0 z-[1000] flex items-center justify-center">
+        <div class="glass-strong rounded-2xl px-6 py-4 text-center" role="status">
+          <div class="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-2 border-paw-orange-400 border-t-transparent" aria-hidden="true" />
+          <p class="text-sm text-white">Localisation…</p>
+        </div>
+      </div>
 
       <!-- Bas de carte : état + nombre de résultats (toujours visible) -->
       <div class="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex flex-col gap-2 px-3 pb-6 pt-3">

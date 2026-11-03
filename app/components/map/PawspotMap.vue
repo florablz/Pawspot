@@ -123,10 +123,14 @@ const updateUserMarker = () => {
   if (userMarker) {
     userMarker.setLatLng([props.latitude, props.longitude])
   } else {
+    // Repère décoratif : ni cliquable ni focusable (« Recentrer sur ma position » suffit).
     userMarker = L.marker([props.latitude, props.longitude], {
       icon: createUserIcon(L),
       zIndexOffset: 1000,
+      interactive: false,
+      keyboard: false,
     }).addTo(map)
+    userMarker.getElement()?.setAttribute('aria-hidden', 'true')
   }
 }
 
