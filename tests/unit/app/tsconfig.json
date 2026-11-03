@@ -1,5 +1,5 @@
 {
   // Vérification de types des tests app : `npx vue-tsc --noEmit -p tests/unit/app`
   "extends": "../../../.nuxt/tsconfig.app.json",
-  "include": ["../../../.nuxt/nuxt.d.ts", "./**/*.ts"]
+  "include": ["../../../.nuxt/nuxt.d.ts", "./**/*.ts", "../../fixtures/geocode/**/*.json"]
 }
