@@ -22,7 +22,7 @@ import { alerts, fetchedTiles, osmLookupMisses, places } from '../../database/sc
 import type { NewPlaceRow, PlaceRow } from '../../database/schema'
 import { elementToPlaceRow, rowToPlace } from './mapping'
 import type { CommunitySignals } from './mapping'
-import { buildOverpassBboxQuery, buildOverpassElementQuery, runOverpassQuery } from './overpass'
+import { buildOverpassBboxQuery, buildOverpassElementQuery, OverpassError, runOverpassQuery } from './overpass'
 import type { OverpassDeps, OverpassElement } from './overpass'
 
 export {
@@ -201,14 +201,22 @@ export function pickRefreshRange(staleTiles: readonly Tile[], center: { lat: num
 /** Requêtes Overpass en cours, par base et par rectangle de tuiles (évite de lancer deux fois la même). */
 const inflightByDb = new WeakMap<Database, Map<string, Promise<boolean>>>()
 
-async function refreshRange(db: Database, range: TileRange, deps: PlacesDeps): Promise<boolean> {
+/**
+ * Lit le rectangle de tuiles sur Overpass puis, en une transaction : lieux mis à jour,
+ * lieux OSM absents de la réponse marqués `removed`, tuiles marquées chargées.
+ * Renvoie le nombre de lieux écrits.
+ * @throws OverpassError si Overpass échoue (rien n'est écrit) ; les erreurs de base sont propagées.
+ */
+async function fetchAndStoreRange(db: Database, range: TileRange, deps: PlacesDeps, serverTimeoutS?: number): Promise<number> {
   const queryBbox = tileRangeToBbox(range)
   let elements: OverpassElement[]
   try {
-    elements = await runOverpassQuery(buildOverpassBboxQuery(queryBbox), deps)
+    elements = await runOverpassQuery(buildOverpassBboxQuery(queryBbox, undefined, serverTimeoutS), deps)
   }
-  catch {
-    return false
+  catch (error) {
+    // Toute erreur côté Overpass (même inattendue) est un échec d'Overpass, pas de la base.
+    if (error instanceof OverpassError) throw error
+    throw new OverpassError([error instanceof Error ? error.message : String(error)])
   }
   const now = deps.now?.() ?? new Date()
   const signals = await loadCommunitySignals(db, elements.map(el => osmPlaceId(el.type, el.id)), now)
@@ -231,7 +239,18 @@ async function refreshRange(db: Database, range: TileRange, deps: PlacesDeps): P
   const statements: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [sweep, ...tileStatements]
   statements.unshift(...upsertStatements(db, rows))
   await db.batch(statements)
-  return true
+  return rows.length
+}
+
+async function refreshRange(db: Database, range: TileRange, deps: PlacesDeps): Promise<boolean> {
+  try {
+    await fetchAndStoreRange(db, range, deps)
+    return true
+  }
+  catch (error) {
+    if (error instanceof OverpassError) return false
+    throw error
+  }
 }
 
 async function refreshTiles(db: Database, covering: TileRange, center: { lat: number; lon: number }, now: Date, deps: PlacesDeps): Promise<RefreshResult> {
@@ -265,6 +284,84 @@ async function refreshTiles(db: Database, covering: TileRange, center: { lat: nu
   const ok = await pending
   const remaining = stale.filter(t => t.x < range.minX || t.x > range.maxX || t.y < range.minY || t.y > range.maxY).length
   return { failed: !ok, remaining }
+}
+
+// ---------------------------------------------------------------------------
+// Pré-remplissage (`npm run places:prefetch`, scripts/places-prefetch.ts)
+// ---------------------------------------------------------------------------
+
+/** Tuiles d'un rectangle, réparties entre fraîches (chargées il y a moins de 7 jours) et à charger. */
+export interface TileRefreshPlan {
+  range: TileRange
+  fresh: Tile[]
+  stale: Tile[]
+}
+
+/**
+ * État du cache pour un rectangle de tuiles (lecture seule, aucun appel Overpass).
+ * `force` : toutes les tuiles sont à charger, même fraîches.
+ */
+export async function planTileRefresh(range: TileRange, deps: PlacesDeps = {}, options: { force?: boolean } = {}): Promise<TileRefreshPlan> {
+  const all = tilesInRange(range)
+  if (options.force) return { range, fresh: [], stale: all }
+  const db = await getDb(deps)
+  const now = deps.now?.() ?? new Date()
+  const freshSince = new Date(now.getTime() - TILE_TTL_MS)
+  const known = await db.select({ x: fetchedTiles.x, y: fetchedTiles.y })
+    .from(fetchedTiles)
+    .where(and(
+      eq(fetchedTiles.z, range.z),
+      between(fetchedTiles.x, range.minX, range.maxX),
+      between(fetchedTiles.y, range.minY, range.maxY),
+      gte(fetchedTiles.fetchedAt, freshSince),
+    ))
+  const freshKeys = new Set(known.map(t => tileKey({ z: range.z, x: t.x, y: t.y })))
+  return { range, fresh: all.filter(t => freshKeys.has(tileKey(t))), stale: all.filter(t => !freshKeys.has(tileKey(t))) }
+}
+
+/**
+ * Découpe des tuiles à charger en rectangles disjoints d'au plus `max` tuiles (une
+ * requête Overpass chacun), du centre vers l'extérieur. Chaque tuile de `tiles` est
+ * dans exactement un rectangle, et un rectangle ne contient que des tuiles de
+ * `tiles` (aucune tuile fraîche rechargée). Fonction pure.
+ */
+export function splitIntoRefreshRanges(tiles: readonly Tile[], center: { lat: number; lon: number }, max = MAX_REFRESH_TILES): TileRange[] {
+  if (!tiles.length) return []
+  const z = tiles[0]!.z
+  const limit = Math.max(1, Math.floor(max))
+  const cx = lonToTileX(center.lon, z)
+  const cy = latToTileY(center.lat, z)
+  const byDistance = (a: Tile, b: Tile) =>
+    Math.max(Math.abs(a.x - cx), Math.abs(a.y - cy)) - Math.max(Math.abs(b.x - cx), Math.abs(b.y - cy))
+    || Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy)
+    || a.x - b.x || a.y - b.y
+  const left = new Map(tiles.map(t => [tileKey(t), t]))
+  const ranges: TileRange[] = []
+  while (left.size) {
+    const sorted = [...left.values()].sort(byDistance)
+    const first = sorted[0]!
+    let range: TileRange = { z, minX: first.x, maxX: first.x, minY: first.y, maxY: first.y }
+    for (const t of sorted.slice(1)) {
+      const candidate: TileRange = { z, minX: Math.min(range.minX, t.x), maxX: Math.max(range.maxX, t.x), minY: Math.min(range.minY, t.y), maxY: Math.max(range.maxY, t.y) }
+      if (tileRangeSize(candidate) <= limit && tilesInRange(candidate).every(c => left.has(tileKey(c)))) range = candidate
+    }
+    for (const t of tilesInRange(range)) left.delete(tileKey(t))
+    ranges.push(range)
+  }
+  return ranges
+}
+
+/**
+ * Charge un rectangle de tuiles depuis Overpass et l'enregistre (même écriture que
+ * `getPlacesInBbox` : lieux, lieux disparus, tuiles), sans vérifier la fraîcheur.
+ * Pour le pré-remplissage : délais fournis par l'appelant (`overpassTimeoutMs`,
+ * `overpassDeadlineMs`), `serverTimeoutS` pour le `[timeout:N]` annoncé.
+ * Renvoie le nombre de lieux lus.
+ * @throws OverpassError si toutes les instances échouent ou sont en pause.
+ */
+export async function refreshTileRange(range: TileRange, deps: PlacesDeps = {}, options: { serverTimeoutS?: number } = {}): Promise<{ places: number }> {
+  const db = await getDb(deps)
+  return { places: await fetchAndStoreRange(db, range, { ...deps, db }, options.serverTimeoutS) }
 }
 
 // ---------------------------------------------------------------------------
