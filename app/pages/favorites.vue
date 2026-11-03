@@ -20,7 +20,7 @@ async function loadFavorites() {
     favorites.value = await $fetch<FavoritePlace[]>('/api/favorites')
   }
   catch (err: unknown) {
-    loadError.value = getApiErrorMessage(err, 'Impossible de charger tes favoris.')
+    loadError.value = getApiErrorMessage(err, 'Impossible de charger vos favoris.')
   }
   finally {
     loading.value = false
@@ -134,7 +134,7 @@ onMounted(() => {
 
       <div v-else class="flex flex-1 flex-col items-center justify-center px-5 text-center">
         <p class="text-sm text-white/70">Aucun favori pour le moment</p>
-        <p class="mt-1 text-xs text-white/50">Explore la carte et ajoute des lieux en favoris</p>
+        <p class="mt-1 text-xs text-white/50">Explorez la carte et ajoutez des lieux à vos favoris avec l'étoile.</p>
         <NuxtLink to="/" class="mt-4 flex min-h-[44px] items-center rounded-full bg-paw-orange-500/20 px-5 text-sm font-medium text-paw-orange-300 transition hover:bg-paw-orange-500/40">
           Explorer la carte
         </NuxtLink>
@@ -181,7 +181,7 @@ onMounted(() => {
     </div>
 
     <div v-else class="hidden flex-1 items-center justify-center md:flex">
-      <p class="text-sm text-white/50">Sélectionne un favori pour voir ses infos</p>
+      <p class="text-sm text-white/50">Sélectionnez un favori pour voir sa fiche.</p>
     </div>
   </div>
 </template>

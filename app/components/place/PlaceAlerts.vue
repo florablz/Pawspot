@@ -62,11 +62,11 @@ function resetForm() {
 
 async function submit() {
   if (!alertType.value) {
-    errorMsg.value = 'Choisis le type de problème.'
+    errorMsg.value = 'Choisissez le type de problème.'
     return
   }
   if (descriptionRequired.value && !description.value.trim()) {
-    errorMsg.value = 'Décris le changement.'
+    errorMsg.value = 'Décrivez le changement.'
     return
   }
   errorMsg.value = ''
@@ -119,7 +119,7 @@ watch(() => props.placeId, () => {
         :to="loginLink"
         class="flex min-h-[44px] items-center rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-200 transition hover:bg-paw-red-700/50"
       >
-        Connecte-toi pour signaler
+        Connectez-vous pour signaler
       </NuxtLink>
     </div>
 
@@ -152,7 +152,7 @@ watch(() => props.placeId, () => {
         rows="2"
         :maxlength="ALERT_DESCRIPTION_MAX_LENGTH"
         :required="descriptionRequired"
-        :placeholder="descriptionRequired ? 'Décris le changement…' : 'Précisions…'"
+        :placeholder="descriptionRequired ? 'Décrivez le changement…' : 'Précisions…'"
       />
       <p class="mb-3 text-right text-[11px] text-white/50">{{ description.length }} / {{ ALERT_DESCRIPTION_MAX_LENGTH }}</p>
 
