@@ -85,11 +85,14 @@ export function toPlacesServiceError(error: unknown): unknown {
 /**
  * Lieu garanti en base avant d'y rattacher un favori, un avis ou une alerte.
  * Inconnu → 404 ; Overpass injoignable pour un lieu OSM pas encore en cache → 503.
+ * `allowOverpass` : n'interroger Overpass pour un lieu absent de la base que pour un
+ * utilisateur connecté (sinon 404 directement), pour qu'un anonyme ne puisse pas
+ * déclencher un appel Overpass par id forgé.
  */
-export async function requirePlace(placeId: string): Promise<Place> {
+export async function requirePlace(placeId: string, options: { allowOverpass: boolean }): Promise<Place> {
   let place: Place | null
   try {
-    place = await ensurePlace(placeId)
+    place = await ensurePlace(placeId, {}, { allowOverpass: options.allowOverpass })
   }
   catch (error) {
     throw toPlacesServiceError(error)

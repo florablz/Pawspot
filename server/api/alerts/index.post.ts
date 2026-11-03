@@ -12,7 +12,7 @@ import { alertBodySchema } from '~~/shared/schemas'
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const { placeId, type, description } = await readValidatedBodyOr400(event, alertBodySchema)
-  await requirePlace(placeId)
+  await requirePlace(placeId, { allowOverpass: true })
 
   const inserted = await db.insert(alerts).values({
     placeId,
