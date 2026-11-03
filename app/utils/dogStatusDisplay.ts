@@ -1,9 +1,8 @@
 import { DOG_STATUS_LABELS, type DogStatus } from '#shared/dogStatus'
 
 /**
- * Teinte d'affichage du statut chien : pastille des marqueurs et badge.
- * Jamais utilisée seule : le badge porte toujours l'emoji et le texte, la
- * pastille du marqueur un symbole.
+ * Teinte d'affichage du statut chien dans le badge. Jamais utilisée seule :
+ * le badge porte toujours l'emoji et le texte.
  */
 export type DogStatusTone = 'green' | 'orange' | 'yellow' | 'gray' | 'red'
 
@@ -17,25 +16,31 @@ export const DOG_STATUS_TONE: Record<DogStatus, DogStatusTone> = {
   unknown: 'gray',
 }
 
-/**
- * Pastille des marqueurs Leaflet (HTML brut, pas de classes Tailwind) :
- * les couleurs reprennent les jetons `paw-*` de tailwind.config.ts.
- */
-export const DOG_STATUS_MARKER_DOT: Record<DogStatusTone, { color: string, glyph: string }> = {
-  green: { color: '#43A047', glyph: '✓' }, // paw-green-500
-  orange: { color: '#FF6D00', glyph: '!' }, // paw-orange-500
-  yellow: { color: '#FDD835', glyph: '?' }, // paw-yellow-400
-  gray: { color: '#9E9E9E', glyph: '?' }, // paw-gray-400
-  red: { color: '#D32F2F', glyph: '✕' }, // paw-red-700
+/** Pastille d'un marqueur Leaflet : couleur, symbole et bordure. */
+export interface DogStatusMarker {
+  color: string
+  /** Symbole propre au statut : la pastille ne repose jamais sur la couleur seule. */
+  glyph: string
+  glyphColor: string
+  /** Bordure en pointillés : statut « probable », non confirmé. */
+  dashed: boolean
 }
 
-/** Couleur du symbole sur la pastille (contraste suffisant sur fond clair ou foncé). */
-export const DOG_STATUS_MARKER_GLYPH_COLOR: Record<DogStatusTone, string> = {
-  green: '#FFFFFF',
-  orange: '#FFFFFF',
-  yellow: '#2C1810', // paw-brown-900
-  gray: '#2C1810',
-  red: '#FFFFFF',
+/**
+ * Pastille des marqueurs Leaflet (HTML brut, pas de classes Tailwind) : un
+ * symbole distinct par niveau de certitude. Les couleurs reprennent les jetons
+ * `paw-*` de tailwind.config.ts ; contraste du symbole ≥ 4,5:1.
+ */
+export const DOG_STATUS_MARKER: Record<DogStatus, DogStatusMarker> = {
+  // Confirmé par la communauté (intérieur ou terrasse) : double coche.
+  confirmed: { color: '#2E7D32', glyph: '✓✓', glyphColor: '#FFFFFF', dashed: false }, // paw-green-700, 5,13:1
+  confirmed_outside_only: { color: '#2E7D32', glyph: '✓✓', glyphColor: '#FFFFFF', dashed: false },
+  // Accepté d'après OpenStreetMap : coche simple.
+  osm_yes: { color: '#2E7D32', glyph: '✓', glyphColor: '#FFFFFF', dashed: false },
+  osm_conditional: { color: '#FF6D00', glyph: '!', glyphColor: '#2C1810', dashed: false }, // paw-orange-500 / brown-900, 5,97:1
+  likely_terrace: { color: '#FDD835', glyph: '~', glyphColor: '#2C1810', dashed: true }, // paw-yellow-400, 12,1:1
+  unknown: { color: '#9E9E9E', glyph: '?', glyphColor: '#2C1810', dashed: false }, // paw-gray-400, 6,29:1
+  refused: { color: '#D32F2F', glyph: '✕', glyphColor: '#FFFFFF', dashed: false }, // paw-red-700, 4,98:1
 }
 
 /** Phrase complète lue par les lecteurs d'écran (« Statut chien : … »). */
