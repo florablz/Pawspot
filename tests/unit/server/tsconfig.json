@@ -1,5 +1,5 @@
 {
-  // Vérification de types des tests serveur : `npx vue-tsc --noEmit -p tests/unit/server`
+  // Vérification de types des tests serveur et des scripts (../scripts) : `npx vue-tsc --noEmit -p tests/unit/server`
   "extends": "../../../.nuxt/tsconfig.server.json",
-  "include": ["../../../.nuxt/types/nitro-nuxt.d.ts", "../../../.nuxt/types/nitro.d.ts", "./**/*.ts", "../../fixtures/**/*.json"]
+  "include": ["../../../.nuxt/types/nitro-nuxt.d.ts", "../../../.nuxt/types/nitro.d.ts", "./**/*.ts", "../scripts/**/*.ts", "../../fixtures/**/*.json"]
 }

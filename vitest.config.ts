@@ -21,7 +21,8 @@ export default defineConfig({
         test: {
           name: 'server',
           environment: 'node',
-          include: ['tests/unit/server/**/*.test.ts'],
+          // Scripts (fonctions pures de scripts/*-lib.ts) : environnement node, comme le serveur.
+          include: ['tests/unit/server/**/*.test.ts', 'tests/unit/scripts/**/*.test.ts'],
         },
       },
       {
