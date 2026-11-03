@@ -30,7 +30,9 @@ const itineraryUrl = computed(() => {
     <div v-if="place.image && !imageFailed" class="relative h-72 w-full overflow-hidden">
       <img
         :src="place.image"
-        :alt="`Photo de ${place.name}`"
+        :alt="`Photo du lieu « ${place.name} »`"
+        loading="lazy"
+        referrerpolicy="no-referrer"
         class="h-full w-full object-cover"
         style="object-position: center 70%"
         @error="imageFailed = true"
