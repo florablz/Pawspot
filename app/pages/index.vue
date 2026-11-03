@@ -5,7 +5,7 @@ import type { MapView } from '~/types/map'
 
 const { latitude, longitude, loading, error: locationError, getLocation } = useUserLocation()
 const {
-  places, fetching, searchError, stale, zoomTooLow, truncated, incomplete, loadedView,
+  places, fetching, searchError, stale, zoomTooLow, outsideCoverage, truncated, incomplete, loadedView,
   fetchPlaces, retry, shouldShowSearchHere,
 } = usePlacesSearch()
 
@@ -175,6 +175,7 @@ onMounted(() => {
           :error="searchError"
           :stale="stale"
           :zoom-too-low="zoomTooLow"
+          :outside-coverage="outsideCoverage"
           :truncated="truncated"
           :incomplete="incomplete"
           :location-message="locationMessage"
