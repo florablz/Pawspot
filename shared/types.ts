@@ -89,6 +89,12 @@ export interface PlacesResponse {
   incomplete: boolean
   /** Trop de lieux dans l'emprise : liste tronquée à la limite du serveur. */
   truncated: boolean
+  /**
+   * Présent (et vrai) seulement si l'emprise ne touche aucun territoire couvert
+   * (France métropolitaine, Corse, DROM, COM : `COVERAGE_AREAS` de shared/geo.ts) :
+   * Overpass non interrogé, seul le cache est renvoyé. Absent = emprise couverte.
+   */
+  outsideCoverage?: boolean
 }
 
 /** Élément de `GET /api/favorites` : le lieu complet et la date d'ajout (ISO). */

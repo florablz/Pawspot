@@ -77,6 +77,19 @@ export const fetchedTiles = sqliteTable('fetched_tiles', {
   primaryKey({ columns: [t.z, t.x, t.y] }),
 ])
 
+/**
+ * Ids OSM déjà cherchés sur Overpass par `ensurePlace` et trouvés introuvables,
+ * non éligibles ou hors couverture : on ne les redemande pas pendant 24 h
+ * (`OSM_MISS_TTL_MS`). Les lignes expirées sont purgées à chaque nouvel ajout.
+ */
+export const osmLookupMisses = sqliteTable('osm_lookup_misses', {
+  /** `osm:node:123`… */
+  id: text('id').primaryKey(),
+  checkedAt: integer('checked_at', { mode: 'timestamp' }).notNull(),
+}, t => [
+  index('osm_lookup_misses_checked_at_idx').on(t.checkedAt),
+])
+
 export const reviews = sqliteTable('reviews', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   placeId: text('place_id').notNull().references(() => places.id),

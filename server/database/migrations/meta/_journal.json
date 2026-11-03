@@ -15,6 +15,13 @@
       "when": 1793648701261,
       "tag": "0001_places_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793721685204,
+      "tag": "0002_osm_lookup_misses",
+      "breakpoints": true
     }
   ]
 }
