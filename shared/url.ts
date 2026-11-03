@@ -64,18 +64,31 @@ function toSafeHttpUrl(v: string): string | undefined {
 }
 
 /**
+ * URL d'image affichable dans un `src` : absolue, `https:` UNIQUEMENT (pas de
+ * `http:`, pour éviter le contenu mixte et le pistage en clair), mêmes règles
+ * que `sanitizeHttpUrl` pour le reste. `undefined` sinon.
+ */
+export function sanitizeImageUrl(value: string | null | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const v = value.trim()
+  if (!/^https:\/\//i.test(v)) return undefined
+  const safe = sanitizeHttpUrl(v)
+  return safe?.startsWith('https:') ? safe : undefined
+}
+
+/**
  * Image d'un lieu à partir de ses tags OSM (`image`, `wikimedia_commons`).
- * Remplace `resolveImage` de `server/utils/dogPolicy.ts`, en n'acceptant que du http(s).
+ * N'accepte que du `https:` (voir `sanitizeImageUrl`).
  */
 export function resolveImage(tags: Record<string, string | undefined>): string | undefined {
   const image = tags.image?.trim()
-  if (image && /^https?:\/\//i.test(image)) {
+  if (image && /^https:\/\//i.test(image)) {
     // Lien vers la page commons wiki/File: → URL directe du fichier.
     const wikiFileMatch = image.match(/commons\.wikimedia\.org\/wiki\/File:(.+)/)
     if (wikiFileMatch) {
       return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(wikiFileMatch[1]!)}?width=600`
     }
-    const safe = sanitizeHttpUrl(image)
+    const safe = sanitizeImageUrl(image)
     if (safe) return safe
   }
 

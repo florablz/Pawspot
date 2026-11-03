@@ -7,7 +7,7 @@ import type { AlertSignal, DogReportInput, DogStatusInfo } from '../../../shared
 import { osmPlaceId } from '../../../shared/schemas'
 import { normalizeName } from '../../../shared/text'
 import type { Place } from '../../../shared/types'
-import { resolveImage, sanitizeWebsite } from '../../../shared/url'
+import { resolveImage, sanitizeImageUrl, sanitizeWebsite } from '../../../shared/url'
 import type { NewPlaceRow, PlaceRow } from '../../database/schema'
 import type { OverpassElement } from './overpass'
 
@@ -127,7 +127,8 @@ export function rowToPlace(row: PlaceRow, now: Date = new Date()): Place {
     // ligne ancienne pourrait ne pas l'être.
     website: sanitizeWebsite(row.website),
     openingHours: row.openingHours ?? undefined,
-    image: row.image ?? undefined,
+    // Même défense pour l'image : `https:` uniquement (une ligne ancienne peut contenir du `http:`).
+    image: sanitizeImageUrl(row.image),
     cuisine: row.cuisine ?? undefined,
     description: row.description ?? undefined,
     dogStatusSource: describeDogStatusSource(info, now),
