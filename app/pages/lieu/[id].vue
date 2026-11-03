@@ -61,7 +61,8 @@ onBeforeUnmount(() => {
 })
 
 // --- Partage (Open Graph) : uniquement nos propres textes et notre logo. ---
-const requestUrl = useRequestURL()
+// Base fixe (APP_URL), jamais déduite de la requête : l'en-tête Host peut être forgé.
+const appUrl = useRuntimeConfig().public.appUrl
 const pageTitle = computed(() => {
   if (place.value) return `${place.value.name} — PawSpot`
   return notFound.value ? 'Lieu introuvable — PawSpot' : 'PawSpot'
@@ -74,7 +75,7 @@ const pageDescription = computed(() => {
   if (p.address) parts.push(p.address)
   return parts.join(' · ')
 })
-const canonical = `${requestUrl.origin}${placePath(id)}`
+const canonical = `${appUrl}${placePath(id)}`
 
 useSeoMeta({
   title: pageTitle,
@@ -85,7 +86,7 @@ useSeoMeta({
   ogSiteName: 'PawSpot',
   ogLocale: 'fr_FR',
   ogUrl: canonical,
-  ogImage: `${requestUrl.origin}/logo/patte-de-chien.png`,
+  ogImage: `${appUrl}/logo.png`,
   twitterCard: 'summary',
   robots: () => (notFound.value ? 'noindex' : undefined),
 })
