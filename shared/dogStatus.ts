@@ -28,10 +28,10 @@ export const DOG_STATUS_LABELS: Record<DogStatus, { emoji: string; label: string
   refused: { emoji: '🔴', label: 'Chiens refusés (signalé par la communauté)' },
   confirmed: { emoji: '🟢', label: 'Accepté, y compris à l\'intérieur' },
   confirmed_outside_only: { emoji: '🟢', label: 'Accepté en terrasse / extérieur' },
-  osm_yes: { emoji: '🟢', label: 'Accepté (source OpenStreetMap)' },
+  osm_yes: { emoji: '🟢', label: 'Accepté' },
   osm_conditional: { emoji: '🟠', label: 'Sous conditions' },
   likely_terrace: { emoji: '🟡', label: 'Probablement accepté en terrasse — non confirmé' },
-  unknown: { emoji: '⚪', label: 'Info non disponible — « Soyez le premier à nous dire ! »' },
+  unknown: { emoji: '⚪', label: 'Info non disponible : soyez le premier à nous le dire !' },
 }
 
 /** Statuts gardés par le filtre « Chiens acceptés confirmés uniquement » (§3.3). */
@@ -85,7 +85,11 @@ export interface OsmDogPolicy {
   conditional?: string
   /** Accepté uniquement à l'extérieur (`dog=outside`). */
   outsideOnly: boolean
-  /** Phrase française courte décrivant la politique, si utile à afficher. */
+  /**
+   * Phrase française courte et lisible décrivant la politique, si utile à afficher,
+   * SANS syntaxe OSM (« Chiens interdits de 12 h à 14 h », « Chiens acceptés la nuit
+   * seulement »). Le texte brut reste dans `conditional`.
+   */
   detail?: string
 }
 
@@ -266,21 +270,229 @@ export function parseOsmDogPolicy(tags: Record<string, string | undefined>): Osm
     rules,
     ...(conditional ? { conditional } : {}),
     outsideOnly,
-    ...describeOsmPolicy(policy, outsideOnly, isDogAllowedValue(base), conditional),
+    ...describeOsmPolicy(policy, outsideOnly, base, rules),
   }
 }
 
-function describeOsmPolicy(policy: OsmDogPolicyKind, outsideOnly: boolean, baseAllowed: boolean, conditional?: string): { detail?: string } {
-  const suffix = conditional ? ` (${conditional})` : ''
+// ---------------------------------------------------------------------------
+// Traduction en français des conditions OSM (`dog:conditional`)
+// ---------------------------------------------------------------------------
+
+const MONTH_NAMES: Record<string, string> = {
+  jan: 'janvier', feb: 'février', mar: 'mars', apr: 'avril', may: 'mai', jun: 'juin',
+  jul: 'juillet', aug: 'août', sep: 'septembre', oct: 'octobre', nov: 'novembre', dec: 'décembre',
+}
+
+const DAY_NAMES: Record<string, string> = {
+  mo: 'lundi', tu: 'mardi', we: 'mercredi', th: 'jeudi', fr: 'vendredi', sa: 'samedi', su: 'dimanche',
+}
+
+/** « de » devant une voyelle → « d' » (« d'octobre », « d'avril »). */
+function de(word: string): string {
+  return /^[aeiouyàâéèêîôû]/i.test(word) ? `d'${word}` : `de ${word}`
+}
+
+/** « a, b et c ». */
+function joinFr(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ''
+  return `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}`
+}
+
+/** `HH:MM` → « 12 h », « 12 h 30 », « minuit ». `undefined` si invalide. */
+function formatClock(hours: string, minutes: string): string | undefined {
+  const h = Number(hours)
+  const m = Number(minutes)
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h > 24 || m > 59 || (h === 24 && m > 0)) return undefined
+  if ((h === 0 || h === 24) && m === 0) return 'minuit'
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`
+}
+
+const SUN_EVENTS: Record<string, { from: string; to: string }> = {
+  sunrise: { from: 'du lever du soleil', to: 'au lever du soleil' },
+  sunset: { from: 'du coucher du soleil', to: 'au coucher du soleil' },
+  dawn: { from: 'de l\'aube', to: 'à l\'aube' },
+  dusk: { from: 'du crépuscule', to: 'au crépuscule' },
+}
+
+function formatTimeItem(item: string): string | undefined {
+  const clock = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(item)
+  if (clock) {
+    const from = formatClock(clock[1]!, clock[2]!)
+    const to = formatClock(clock[3]!, clock[4]!)
+    if (!from || !to) return undefined
+    return `${from === 'minuit' ? 'de minuit' : de(from)} à ${to}`
+  }
+  const sun = /^(sunrise|sunset|dawn|dusk)-(sunrise|sunset|dawn|dusk)$/.exec(item)
+  if (sun && sun[1] !== sun[2]) {
+    // « du coucher du soleil au lever du soleil » → « du coucher au lever du soleil ».
+    const from = SUN_EVENTS[sun[1]!]!.from
+    const to = SUN_EVENTS[sun[2]!]!.to
+    if (from.endsWith(' du soleil') && to.endsWith(' du soleil')) return `${from.slice(0, -' du soleil'.length)} ${to}`
+    return `${from} ${to}`
+  }
+  return undefined
+}
+
+function formatDayOfMonth(day: string): string | undefined {
+  const d = Number(day)
+  if (!Number.isInteger(d) || d < 1 || d > 31) return undefined
+  return d === 1 ? '1er' : String(d)
+}
+
+/** `Jun`, `Jun-Sep`, `Jun 15-Sep 15`, `Jul 14`, `Jun 01-15`. */
+function formatMonthItem(item: string): string | undefined {
+  let m = /^([a-z]{3})$/.exec(item)
+  if (m) {
+    const name = MONTH_NAMES[m[1]!]
+    return name && `en ${name}`
+  }
+  m = /^([a-z]{3})-([a-z]{3})$/.exec(item)
+  if (m) {
+    const a = MONTH_NAMES[m[1]!]
+    const b = MONTH_NAMES[m[2]!]
+    return a && b ? `${de(a)} à ${b}` : undefined
+  }
+  m = /^([a-z]{3}) (\d{1,2})$/.exec(item)
+  if (m) {
+    const name = MONTH_NAMES[m[1]!]
+    const d = formatDayOfMonth(m[2]!)
+    return name && d ? `le ${d} ${name}` : undefined
+  }
+  m = /^([a-z]{3}) (\d{1,2})-(?:([a-z]{3}) )?(\d{1,2})$/.exec(item)
+  if (m) {
+    const a = MONTH_NAMES[m[1]!]
+    const b = m[3] ? MONTH_NAMES[m[3]] : a
+    const d1 = formatDayOfMonth(m[2]!)
+    const d2 = formatDayOfMonth(m[4]!)
+    if (!a || !b || !d1 || !d2) return undefined
+    return a === b ? `du ${d1} au ${d2} ${a}` : `du ${d1} ${a} au ${d2} ${b}`
+  }
+  return undefined
+}
+
+/** `Mo`, `Mo-Fr`, `PH`, `SH`. Renvoie des morceaux à joindre (« le samedi », « du lundi au vendredi »). */
+function formatDayItem(item: string): string | undefined {
+  if (item === 'ph') return 'les jours fériés'
+  if (item === 'sh') return 'pendant les vacances scolaires'
+  let m = /^([a-z]{2})$/.exec(item)
+  if (m) {
+    const name = DAY_NAMES[m[1]!]
+    return name && `le ${name}`
+  }
+  m = /^([a-z]{2})-([a-z]{2})$/.exec(item)
+  if (m) {
+    const a = DAY_NAMES[m[1]!]
+    const b = DAY_NAMES[m[2]!]
+    return a && b ? `du ${a} au ${b}` : undefined
+  }
+  return undefined
+}
+
+const SEASONS: Record<string, string> = {
+  night: 'la nuit',
+  summer: 'en été',
+  winter: 'en hiver',
+  spring: 'au printemps',
+  autumn: 'en automne',
+}
+
+/**
+ * Condition OSM (sous-ensemble courant de la syntaxe `opening_hours`) → complément
+ * français : « de 12 h à 14 h », « de juin à septembre, le samedi et le dimanche »,
+ * « la nuit ». `undefined` si un morceau n'est pas reconnu (on n'invente rien).
+ *
+ * Reconnus : plages `HH:MM-HH:MM` (séparées par `,`), `sunset-sunrise` & co, mois
+ * (`Jun`, `Jun-Sep`, `Jun 15-Sep 15`, `Jul 14`), jours (`Mo`, `Mo-Fr`, `Sa,Su`, `PH`,
+ * `SH`), `night`, `summer` / `winter` / `spring` / `autumn`, et leurs combinaisons
+ * séparées par des espaces (`Jun-Sep Sa,Su 10:00-18:00`).
+ */
+export function describeDogCondition(condition: string): string | undefined {
+  const normalized = stripOuterParens(condition).toLowerCase()
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s*,\s*/g, ',')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return undefined
+  // Mois suivi d'un jour (« jun 15 ») : on garde l'espace interne en les recollant.
+  // « # » sert de marqueur temporaire (un « # » d'origine devient une espace, sans risque).
+  const words = normalized.replace(/\b([a-z]{3}) (\d{1,2})(?![\d:])/g, '$1#$2').split(' ')
+  const parts: string[] = []
+  for (const word of words) {
+    const items = word.replace(/#/g, ' ').split(',')
+    const seasonOrNight = items.length === 1 ? SEASONS[items[0]!] : undefined
+    if (seasonOrNight) {
+      parts.push(seasonOrNight)
+      continue
+    }
+    let formatted: (string | undefined)[] = items.map(formatTimeItem)
+    if (formatted.some(v => v === undefined)) formatted = items.map(formatMonthItem)
+    if (formatted.some(v => v === undefined)) formatted = items.map(formatDayItem)
+    if (formatted.some(v => v === undefined)) return undefined
+    parts.push(joinFr(formatted as string[]))
+  }
+  return parts.join(', ')
+}
+
+const VALUE_PHRASES: Record<Exclude<OsmDogValue, 'other'>, string> = {
+  yes: 'Chiens acceptés',
+  leashed: 'Chiens acceptés en laisse',
+  unleashed: 'Chiens acceptés sans laisse',
+  outside: 'Chiens acceptés à l\'extérieur',
+  no: 'Chiens interdits',
+}
+
+/**
+ * Une règle `dog:conditional` → phrase française (« Chiens interdits de 12 h à 14 h »).
+ * `only` ajoute « seulement » (autorisation sur fond d'interdiction : « Chiens acceptés
+ * la nuit seulement »). `undefined` si la valeur ou la condition n'est pas reconnue.
+ */
+export function describeDogConditionalRule(rule: Pick<DogConditionalRule, 'value' | 'condition'>, only = false): string | undefined {
+  if (rule.value === 'other') return undefined
+  const condition = describeDogCondition(rule.condition)
+  if (!condition) return undefined
+  const sentence = `${VALUE_PHRASES[rule.value]} ${condition}`
+  return only && rule.value !== 'no' ? `${sentence} seulement` : sentence
+}
+
+/** Textes de repli quand une règle ne peut pas être traduite (jamais de syntaxe OSM). */
+export const OSM_DETAIL_FALLBACKS = {
+  night_only: 'Chiens acceptés la nuit seulement',
+  /** Interdictions à certains moments (`dog=yes` + `no @ …`, ou `no @ …` seul). */
+  restricted: 'Chiens interdits à certains moments',
+  /** Autorisations à certains moments (`dog=no` + `yes @ …`, ou `yes @ …` seul). */
+  conditional_yes: 'Chiens acceptés à certains moments seulement',
+  outside: 'Uniquement à l\'extérieur',
+} as const
+
+function lowerFirst(value: string): string {
+  return value.charAt(0).toLowerCase() + value.slice(1)
+}
+
+function describeOsmPolicy(policy: OsmDogPolicyKind, outsideOnly: boolean, base: OsmDogValue | undefined, rules: readonly DogConditionalRule[]): { detail?: string } {
+  const baseAllowed = isDogAllowedValue(base)
+  // Règles utiles : autorisations / interdictions (les valeurs non reconnues sont ignorées).
+  const useful = rules.filter(r => r.value !== 'other')
+  // « seulement » : autorisation sur fond d'interdiction (`dog=no`) ou politique « nuit seulement ».
+  const only = base === 'no' || policy === 'night_only'
+  const translated = useful.map(r => describeDogConditionalRule(r, only))
+  const allTranslated = useful.length > 0 && translated.every(Boolean)
+  const sentences = (head?: string): string | undefined => {
+    if (!allTranslated) return undefined
+    const list = [...(head ? [head] : []), ...(translated as string[])]
+    return list.map((t, i) => (i === 0 ? t : lowerFirst(t))).join(' ; ')
+  }
   switch (policy) {
     case 'night_only':
-      return { detail: `Uniquement la nuit${suffix}` }
-    case 'restricted':
-      return { detail: `Selon les horaires ou la saison${suffix}` }
+      return { detail: sentences() ?? OSM_DETAIL_FALLBACKS.night_only }
+    case 'restricted': {
+      const head = outsideOnly ? OSM_DETAIL_FALLBACKS.outside : undefined
+      const generic = base === 'no' ? OSM_DETAIL_FALLBACKS.conditional_yes : OSM_DETAIL_FALLBACKS.restricted
+      return { detail: sentences(head) ?? (head ? `${head} ; ${lowerFirst(generic)}` : generic) }
+    }
     case 'all_day':
-      if (outsideOnly) return { detail: 'Uniquement à l\'extérieur' }
+      if (outsideOnly) return { detail: OSM_DETAIL_FALLBACKS.outside }
       // Autorisation conditionnelle sans `dog` (« yes @ (Oct-May) ») : à préciser.
-      return conditional && !baseAllowed ? { detail: `Selon les horaires ou la saison${suffix}` } : {}
+      return useful.length && !baseAllowed ? { detail: sentences() ?? OSM_DETAIL_FALLBACKS.conditional_yes } : {}
     default:
       return {}
   }
@@ -399,7 +611,7 @@ export interface DogStatusInfo {
   lastReportAt?: string
   /** Utilisateurs distincts ayant signalé `dogs_not_allowed` (si ≥ 1). */
   dogsNotAllowedAlerts?: number
-  /** Détail de la politique OSM (« Uniquement la nuit (yes @ (19:00-08:00)) »). */
+  /** Détail lisible de la politique OSM (`OsmDogPolicy.detail`, ex. « Chiens acceptés de 19 h à 8 h seulement »). */
   osmDetail?: string
 }
 
@@ -506,17 +718,21 @@ export function computeDogStatus(input: DogStatusInput): DogStatusResult {
   return { status: 'unknown', info }
 }
 
+/** Texte de la source `terrace` (statut `likely_terrace`), affiché après « Source : ». */
+export const TERRACE_SOURCE_TEXT = 'terrasse indiquée sur OpenStreetMap, aucune info sur les chiens'
+
 /**
- * Texte de la source du statut, à afficher sous le badge (§3.5) :
- * « OpenStreetMap », « terrasse », « 3 membres, dernier retour il y a 12 jours »,
- * « signalé par 3 membres ». `undefined` pour `unknown`.
+ * Texte de la source du statut, à afficher après « Source : » sous le badge (§3.5) :
+ * « OpenStreetMap », « terrasse indiquée sur OpenStreetMap, aucune info sur les chiens »,
+ * « 3 membres, dernier retour il y a 12 jours », « signalé par 3 membres ».
+ * `undefined` pour `unknown`.
  */
 export function describeDogStatusSource(info: DogStatusInfo, now: Date | number = Date.now()): string | undefined {
   switch (info.source) {
     case 'osm':
       return 'OpenStreetMap'
     case 'terrace':
-      return 'terrasse'
+      return TERRACE_SOURCE_TEXT
     case 'alerts': {
       const n = info.dogsNotAllowedAlerts ?? 0
       return `signalé par ${n} membre${n > 1 ? 's' : ''}`

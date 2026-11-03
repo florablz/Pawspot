@@ -95,8 +95,15 @@ const EMPTY_INFO: DogStatusInfo = {
 export function rowToPlace(row: PlaceRow, now: Date = new Date()): Place {
   const tags = row.tags ?? {}
   const category = isCategoryKey(row.category) ? row.category : 'park'
-  const info = row.dogStatusInfo ?? EMPTY_INFO
   const osm = parseOsmDogPolicy(tags)
+  const stored = row.dogStatusInfo ?? EMPTY_INFO
+  // `osmDetail` est figé en base au dernier calcul : on le régénère depuis les tags
+  // pour que les lignes anciennes profitent aussi du texte lisible actuel.
+  let info: DogStatusInfo = stored
+  if (stored.osmDetail !== undefined) {
+    const { osmDetail: _old, ...rest } = stored
+    info = osm.detail ? { ...rest, osmDetail: osm.detail } : rest
+  }
   const place: Place = {
     id: row.id,
     source: row.source,
