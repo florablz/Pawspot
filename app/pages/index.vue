@@ -2,7 +2,8 @@
 /** Carte seule : tout l'écran est dans le layout `map` (la fiche vit dans `/lieu/[id]`). */
 definePageMeta({ layout: 'map' })
 
-const origin = useRequestURL().origin
+// Base fixe (APP_URL), jamais déduite de la requête : l'en-tête Host peut être forgé.
+const appUrl = useRuntimeConfig().public.appUrl
 const description = 'Parcs, cafés, restaurants, plages, vétos : trouvez près de chez vous les lieux qui acceptent les chiens, avec l\'avis de la communauté.'
 
 useSeoMeta({
@@ -13,7 +14,8 @@ useSeoMeta({
   ogType: 'website',
   ogSiteName: 'PawSpot',
   ogLocale: 'fr_FR',
-  ogImage: `${origin}/logo/patte-de-chien.png`,
+  ogUrl: `${appUrl}/`,
+  ogImage: `${appUrl}/logo.png`,
   twitterCard: 'summary',
 })
 </script>
