@@ -10,7 +10,7 @@ Les lieux viennent d'**OpenStreetMap** (API Overpass). La communauté peut ajout
 
 ## Prérequis
 
-- **Node.js ≥ 20** (une version LTS est recommandée). Vérifie avec `node -v`.
+- **Node.js ≥ 20** (une version LTS est recommandée). Vérifiez avec `node -v`.
 - **npm** (installé avec Node).
 - Git.
 
@@ -26,7 +26,7 @@ Les lieux viennent d'**OpenStreetMap** (API Overpass). La communauté peut ajout
    ```bash
    npm install
    ```
-   > Avec npm 11, les scripts d'installation des paquets doivent être approuvés : la liste des paquets autorisés est dans le bloc `allowScripts` de `package.json`. Si npm affiche un avertissement `install-scripts`, lance `npm install-scripts ls` pour voir de quoi il s'agit.
+   > Avec npm 11, les scripts d'installation des paquets doivent être approuvés : la liste des paquets autorisés est dans le bloc `allowScripts` de `package.json`. Si npm affiche un avertissement `install-scripts`, lancez `npm install-scripts ls` pour voir de quoi il s'agit.
 
 3. **Créer le fichier `.env`**
    ```bash
@@ -39,12 +39,27 @@ Les lieux viennent d'**OpenStreetMap** (API Overpass). La communauté peut ajout
    npm run db:migrate
    npm run db:seed
    ```
+   > Bon à savoir : avec une base locale (le fichier `pawspot.db`), les migrations sont **appliquées automatiquement** à chaque démarrage du serveur (`npm run dev`, ou `npm run preview` après un build). Après un `git pull` qui ajoute une migration, il suffit donc de relancer `npm run dev`. La commande `npm run db:migrate` reste disponible : elle est nécessaire ici avant `npm run db:seed` (le seed a besoin des tables), et elle affiche le détail complet en cas d'erreur.
 
 5. **Lancer le serveur de développement**
    ```bash
    npm run dev
    ```
-   Ouvre ensuite <http://localhost:3000>.
+   Ouvrez ensuite <http://localhost:3000>.
+
+## Si aucun lieu ne s'affiche
+
+Deux causes fréquentes, à vérifier dans cet ordre :
+
+1. **La base n'est pas à jour (pas migrée).** Le terminal où tourne `npm run dev` affiche alors un message `[PawSpot] ÉCHEC des migrations…` ou `Migrations automatiques ignorées…`, et les pages renvoient des erreurs.
+   - Arrêtez le serveur (`Ctrl + C`) puis relancez `npm run dev` **depuis la racine du projet** (le dossier `Pawspot`) : les migrations s'appliquent au démarrage.
+   - Si le problème persiste, lancez `npm run db:migrate` : la commande affiche l'erreur en détail.
+
+2. **Les serveurs Overpass (OpenStreetMap) sont saturés.** Les lieux viennent de serveurs publics et gratuits, parfois très lents ou indisponibles (le 3 novembre 2026, une requête minuscule prenait 31 s sur le serveur principal et les autres ne répondaient pas). Dans ce cas :
+   - si la zone a déjà été chargée une fois, l'application affiche les lieux gardés en mémoire avec le bandeau **« Lieux affichés depuis notre sauvegarde »** : c'est normal, rien n'est cassé ;
+   - si la zone n'a jamais été chargée, la carte peut rester vide ou mettre jusqu'à environ 40 secondes à répondre ;
+   - réessayez plus tard (quelques minutes à quelques heures). L'état du serveur principal est visible sur <https://overpass-api.de/api/status> : si la page est lente à s'ouvrir ou indique qu'aucun créneau n'est libre (« slots available » à 0), le problème vient de là ;
+   - vous pouvez aussi changer l'ordre ou la liste des serveurs essayés avec la variable optionnelle `OVERPASS_ENDPOINTS` (voir [Variables d'environnement](#variables-denvironnement)).
 
 ## Comptes de démo
 
@@ -86,6 +101,8 @@ Toutes les variables sont documentées dans [`.env.example`](.env.example). Le f
 | `DATABASE_AUTH_TOKEN` | en prod | Jeton Turso. Vide en local. |
 | `APP_URL` | oui | URL publique de l'app (`http://localhost:3000` en local). |
 | `TILE_URL` | non | Modèle d'URL des tuiles de carte. Tuiles OSM par défaut ; un fournisseur gratuit (OpenFreeMap, MapTiler, Stadia…) en production. |
+| `OVERPASS_ENDPOINTS` | non | Serveurs Overpass à essayer, dans l'ordre : URLs complètes se terminant par `/api/interpreter`, séparées par des virgules. Les entrées invalides sont ignorées ; si aucune n'est valide (ou si la variable est absente), la liste par défaut est utilisée (overpass-api.de, maps.mail.ru, overpass.private.coffee, overpass.kumi.systems). |
+| `PAWSPOT_MIGRATIONS_DIR` | non | Dossier des migrations. Utile seulement si le serveur tourne avec une base locale depuis un dossier situé hors du dépôt. À laisser vide sinon. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | phase 4 | Stockage des photos sur Cloudflare R2. |
 | `RESEND_API_KEY` | phase 4 | Envoi d'emails via Resend. |
 
@@ -112,6 +129,11 @@ public/             Fichiers statiques (logo, favicon…)
 ## Mise en ligne
 
 La mise en ligne gratuite (Vercel + Turso + Cloudflare R2 + Resend) est prévue en phase 4 : un guide pas à pas sera ajouté ici à ce moment-là.
+
+Points déjà connus pour la phase 4 :
+
+- **Migrations en production** : avec une base distante (Turso), les migrations ne sont **pas** appliquées automatiquement. Il faudra lancer `npm run db:migrate` (avec les variables Turso) avant chaque build de production.
+- **Durée d'exécution des requêtes** : la route `/api/places` peut mettre jusqu'à environ 40 secondes quand Overpass est lent (zone jamais chargée). L'hébergeur devra autoriser **au moins 45 secondes** d'exécution par requête. Sur Vercel, la limite par défaut sans « Fluid compute » est de 10 secondes : il faudra la relever (réglage `maxDuration`) au moment du déploiement.
 
 ## Sources et licences
 
