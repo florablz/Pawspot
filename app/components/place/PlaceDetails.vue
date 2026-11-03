@@ -5,13 +5,11 @@ import type { Place } from '#shared/types'
  * Contenu d'une fiche lieu (fiche de la carte et « Mes favoris »), dans l'ordre
  * du §3.5 : en-tête + statut chien, (retours chien : Phase 3), alertes, photo,
  * infos pratiques, actions, avis.
- * `embedded` : l'en-tête et « Itinéraire » sont affichés par le parent (partie
+ * `embedded` : l'en-tête, « Itinéraire » et « Partager » sont affichés par le parent (partie
  * fixe de la fiche sur la carte). Le slot par défaut ajoute des actions.
  */
 const props = defineProps<{
   place: Place
-  /** Position de l'utilisateur, pour l'itinéraire. */
-  origin?: { lat: number, lng: number } | null
   embedded?: boolean
 }>()
 
@@ -52,7 +50,10 @@ watch(() => props.place.id, () => { imageFailed.value = false })
     <PlaceInfoList :place="place" />
 
     <div v-if="!embedded || $slots.default" class="space-y-3">
-      <PlaceItineraryLink v-if="!embedded" :place="place" :origin="origin" />
+      <div v-if="!embedded" class="flex gap-2">
+        <PlaceItineraryLink :place="place" class="min-w-0 flex-1" />
+        <PlaceShareButton :place="place" />
+      </div>
       <slot />
     </div>
 

@@ -16,10 +16,6 @@ const validId = isValidPlaceId(id)
 
 const { selected, close } = usePlaceSheet()
 const { places } = usePlaces()
-const { latitude, longitude } = useUserLocation()
-const userPosition = computed(() =>
-  latitude.value != null && longitude.value != null ? { lat: latitude.value, lng: longitude.value } : null,
-)
 
 // `lazy` : une navigation côté client n'attend pas l'API (le lieu déjà chargé s'affiche).
 const placeRequest = useFetch<Place>(placeApiUrl(id), {
@@ -95,7 +91,7 @@ useHead({ link: [{ rel: 'canonical', href: canonical }] })
 
 <template>
   <div>
-    <PlaceSheet v-if="place && place.status !== 'merged'" :place="place" :origin="userPosition" @close="close" />
+    <PlaceSheet v-if="place && place.status !== 'merged'" :place="place" @close="close" />
     <PlaceLoadNotice v-else-if="notFound" state="not-found" @close="close" />
     <PlaceLoadNotice v-else-if="loadError" state="error" :message="loadError" @retry="refresh()" @close="close" />
     <PlaceLoadNotice v-else-if="status === 'pending' || status === 'idle'" state="loading" @close="close" />
