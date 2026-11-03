@@ -288,3 +288,27 @@ describe('instances configurées (OVERPASS_ENDPOINTS)', () => {
     expect(calledHosts()).toEqual([C])
   })
 })
+
+describe('buildOverpassBboxQuery : [timeout:N] annoncé', () => {
+  const timeoutOf = (query: string) => Number(/\[timeout:(\d+)\]/.exec(query)?.[1])
+
+  it('défaut : OVERPASS_SERVER_TIMEOUT_S', () => {
+    expect(timeoutOf(buildOverpassBboxQuery(PARIS))).toBe(OVERPASS_SERVER_TIMEOUT_S)
+  })
+
+  it('valeur fournie (pré-remplissage) : reprise telle quelle', () => {
+    expect(timeoutOf(buildOverpassBboxQuery(PARIS, undefined, 90))).toBe(90)
+  })
+
+  it('valeur décimale : partie entière', () => {
+    expect(timeoutOf(buildOverpassBboxQuery(PARIS, undefined, 59.9))).toBe(59)
+  })
+
+  it.each([0, 0.4, -5])('valeur %s : au moins 1 s', (value) => {
+    expect(timeoutOf(buildOverpassBboxQuery(PARIS, undefined, value))).toBe(1)
+  })
+
+  it('le reste de la requête ne change pas', () => {
+    expect(buildOverpassBboxQuery(PARIS, undefined, 90).replace('[timeout:90]', `[timeout:${OVERPASS_SERVER_TIMEOUT_S}]`)).toBe(QUERY)
+  })
+})
