@@ -9,7 +9,7 @@
  *
  * Dépendances injectables (`db`, `now`) pour les tests.
  */
-import { eq, lte } from 'drizzle-orm'
+import { eq, lte, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { geocodeResultSchema } from '../../../shared/schemas'
 import { normalizeName } from '../../../shared/text'
@@ -56,10 +56,24 @@ export async function getCachedGeocode(query: string, deps: GeocodeCacheDeps = {
   const db = await getDb(deps)
   const now = deps.now?.() ?? new Date()
   const ttl = deps.ttlMs ?? GEOCODE_CACHE_TTL_MS
-  const row = await db.select().from(geocodeCache).where(eq(geocodeCache.query, key)).get()
+  // `results` relu en texte brut (sans le `JSON.parse` de la colonne en mode `json`,
+  // qui lèverait sur une valeur corrompue) puis décodé ici, de façon protégée.
+  const row = await db.select({ results: sql<unknown>`${geocodeCache.results}`, createdAt: geocodeCache.createdAt })
+    .from(geocodeCache).where(eq(geocodeCache.query, key)).get()
   if (!row || row.createdAt.getTime() <= now.getTime() - ttl) return null
-  const parsed = cachedResultsSchema.safeParse(row.results)
+  const parsed = cachedResultsSchema.safeParse(parseJsonText(row.results))
   return parsed.success ? parsed.data as GeocodeResult[] : null
+}
+
+/** `JSON.parse` d'une valeur lue en base ; `undefined` si ce n'est pas une chaîne JSON valide. */
+function parseJsonText(value: unknown): unknown {
+  if (typeof value !== 'string') return undefined
+  try {
+    return JSON.parse(value)
+  }
+  catch {
+    return undefined
+  }
 }
 
 /**
