@@ -24,6 +24,11 @@
  *   --timeout=90          délai maximal d'un essai (une instance), en secondes
  *   --tiles-per-request=4 tuiles au plus par requête Overpass (1 à 8)
  *
+ * Fonctions pures (options, villes, disjoncteur, mise en forme) : `prefetch-lib.ts`.
+ * Mise en veille : les délais sont tenus sur l'horloge murale (voir
+ * `armAttemptTimer`), mais rien ne s'exécute pendant la veille ; sous macOS,
+ * lancer avec `caffeinate -i` pour un long pré-remplissage.
+ *
  * Garde-fou : refuse une base distante (`DATABASE_URL` non `file:`) sauf
  * `PREFETCH_ALLOW_REMOTE=1` (prod : à lancer explicitement, en surveillant le
  * volume de l'offre gratuite de Turso).
@@ -32,101 +37,41 @@
  * d'erreur, 2 si le script s'est arrêté (instances en pause ou Ctrl-C).
  */
 import './db-env'
-import { cityBbox, cityTileCount, cityTileRange, findPrefetchCity, PREFETCH_CITIES } from '../shared/cities'
+import { cityBbox, cityTileCount, cityTileRange, PREFETCH_CITIES } from '../shared/cities'
 import type { PrefetchCity } from '../shared/cities'
 import { bboxCenter, tileRangeSize } from '../shared/geo'
 import type { TileRange } from '../shared/geo'
-
-const HELP = `Usage : npx tsx scripts/places-prefetch.ts [options]
-  --city=Paris[,Lyon]    villes à traiter (répétable ; défaut : toutes)
-  --list                 affiche les villes et leur nombre de tuiles
-  --dry-run              compte les tuiles à charger, sans appeler Overpass
-  --force                recharge aussi les tuiles fraîches (< 7 jours)
-  --pause=5              pause entre deux requêtes Overpass, en secondes
-  --timeout=90           délai maximal d'un essai (une instance), en secondes
-  --tiles-per-request=4  tuiles au plus par requête Overpass (1 à 8)
-Base distante refusée sauf PREFETCH_ALLOW_REMOTE=1.`
-
-interface Options {
-  cities: string[]
-  list: boolean
-  dryRun: boolean
-  force: boolean
-  pauseMs: number
-  timeoutMs: number
-  tilesPerRequest: number
-}
+import type { PrefetchOptions } from './prefetch-lib'
+import {
+  allInstancesPaused as allPaused, formatDuration as duration, formatNumber, parseArgs, plural, PREFETCH_HELP, PrefetchUsageError,
+  selectCities, suspectedSleep,
+} from './prefetch-lib'
 
 function fail(message: string): never {
   console.error(message)
   process.exit(1)
 }
 
-function numberOption(name: string, value: string, min: number, max: number): number {
-  const n = Number(value)
-  if (!value.trim() || !Number.isFinite(n) || n < min || n > max) fail(`Option --${name} invalide : « ${value} » (attendu entre ${min} et ${max}).`)
-  return n
-}
-
-function parseArgs(argv: readonly string[]): Options {
-  const options: Options = { cities: [], list: false, dryRun: false, force: false, pauseMs: 5_000, timeoutMs: 90_000, tilesPerRequest: 4 }
-  for (const arg of argv) {
-    const [name, ...rest] = arg.split('=')
-    const value = rest.join('=')
-    switch (name) {
-      case '--city':
-        options.cities.push(...value.split(',').map(v => v.trim()).filter(Boolean))
-        if (!value.trim()) fail('Option --city vide : ex. --city=Paris ou --city=Paris,Lyon.')
-        break
-      case '--list': options.list = true; break
-      case '--dry-run': options.dryRun = true; break
-      case '--force': options.force = true; break
-      case '--pause': options.pauseMs = numberOption('pause', value, 0, 600) * 1000; break
-      case '--timeout': options.timeoutMs = numberOption('timeout', value, 10, 600) * 1000; break
-      case '--tiles-per-request': options.tilesPerRequest = Math.trunc(numberOption('tiles-per-request', value, 1, 8)); break
-      case '--help': case '-h':
-        console.log(HELP)
-        process.exit(0)
-        break
-      default:
-        fail(`Option inconnue : ${arg}\n\n${HELP}`)
-    }
-  }
-  return options
-}
-
-function selectCities(names: readonly string[]): PrefetchCity[] {
-  if (!names.length) return [...PREFETCH_CITIES]
-  const selected: PrefetchCity[] = []
-  const unknown: string[] = []
-  for (const name of names) {
-    const city = findPrefetchCity(name)
-    if (!city) unknown.push(name)
-    else if (!selected.includes(city)) selected.push(city)
-  }
-  if (unknown.length) fail(`Ville inconnue : ${unknown.join(', ')}. Liste des villes : --list.`)
-  return selected
-}
-
-const fmt = new Intl.NumberFormat('fr-FR')
-
-function duration(ms: number): string {
-  const s = ms / 1000
-  if (s < 60) return `${s.toFixed(1).replace('.', ',')} s`
-  const m = Math.floor(s / 60)
-  return `${m} min ${String(Math.round(s - m * 60)).padStart(2, '0')} s`
-}
-
-function plural(n: number, one: string, many: string): string {
-  return `${fmt.format(n)} ${n > 1 ? many : one}`
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-const options = parseArgs(process.argv.slice(2))
-const cities = selectCities(options.cities)
+function readOptions(): { options: PrefetchOptions; cities: PrefetchCity[] } {
+  try {
+    const options = parseArgs(process.argv.slice(2))
+    if (options.help) {
+      console.log(PREFETCH_HELP)
+      process.exit(0)
+    }
+    return { options, cities: selectCities(options.cities) }
+  }
+  catch (error) {
+    if (error instanceof PrefetchUsageError) fail(error.message)
+    throw error
+  }
+}
+
+const { options, cities } = readOptions()
 
 if (options.list) {
   console.log(`${plural(PREFETCH_CITIES.length, 'ville', 'villes')} pré-remplissables (tuiles z12) :`)
@@ -173,8 +118,7 @@ process.on('SIGINT', () => {
 })
 
 function allInstancesPaused(): boolean {
-  const now = Date.now()
-  return endpoints.every(e => circuit.isOpen(e, options.timeoutMs, now))
+  return allPaused(endpoints, circuit, options.timeoutMs, Date.now())
 }
 
 interface Totals { done: number; skipped: number; failed: number; places: number }
@@ -229,7 +173,12 @@ async function prefetchCity(city: PrefetchCity): Promise<void> {
       }
       catch (error) {
         if (!(error instanceof OverpassError)) throw error
-        console.log(`${label} : échec en ${duration(Date.now() - t0)} (${error.attempts.join(' ; ')})`)
+        const elapsed = Date.now() - t0
+        console.log(`${label} : échec en ${duration(elapsed)} (${error.attempts.join(' ; ')})`)
+        if (suspectedSleep(elapsed, overpassDeps.overpassDeadlineMs)) {
+          console.log(`    (durée supérieure au délai total de ${duration(overpassDeps.overpassDeadlineMs)} : `
+            + 'l\'ordinateur s\'est probablement mis en veille ; sous macOS, relancer avec « caffeinate -i ».)')
+        }
         if (size > 1 && !allInstancesPaused()) {
           // Résultat partiel (requête trop lourde) : on réessaie tuile par tuile.
           console.log('    → nouvel essai tuile par tuile')
@@ -253,8 +202,8 @@ async function prefetchCity(city: PrefetchCity): Promise<void> {
   totals.failed += stats.failed
   totals.places += stats.places
   if (!options.dryRun) {
-    console.log(`${city.name} : ${plural(stats.done, 'tuile faite', 'tuiles faites')}, ${fmt.format(stats.skipped)} sautée(s), `
-      + `${fmt.format(stats.failed)} en échec, ${plural(stats.places, 'lieu', 'lieux')}, ${duration(Date.now() - cityStart)}.`)
+    console.log(`${city.name} : ${plural(stats.done, 'tuile faite', 'tuiles faites')}, ${formatNumber(stats.skipped)} sautée(s), `
+      + `${formatNumber(stats.failed)} en échec, ${plural(stats.places, 'lieu', 'lieux')}, ${duration(Date.now() - cityStart)}.`)
   }
 }
 
@@ -282,8 +231,8 @@ try {
       + `${plural(totals.skipped, 'fraîche sautée', 'fraîches sautées')}.`)
   }
   else {
-    console.log(`Total : ${plural(totals.done, 'tuile faite', 'tuiles faites')}, ${fmt.format(totals.skipped)} sautée(s), `
-      + `${fmt.format(totals.failed)} en échec, ${plural(totals.places, 'lieu', 'lieux')}, `
+    console.log(`Total : ${plural(totals.done, 'tuile faite', 'tuiles faites')}, ${formatNumber(totals.skipped)} sautée(s), `
+      + `${formatNumber(totals.failed)} en échec, ${plural(totals.places, 'lieu', 'lieux')}, `
       + `${plural(requests, 'requête', 'requêtes')} Overpass, ${duration(Date.now() - started)}.`)
   }
   if (stopped) {
