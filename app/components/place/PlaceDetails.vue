@@ -45,7 +45,7 @@ const itineraryUrl = computed(() => {
             {{ category?.icon ?? DEFAULT_CATEGORY_ICON }}
           </span>
           <div class="min-w-0 flex-1">
-            <h2 class="text-xl font-bold leading-tight text-white">{{ place.name }}</h2>
+            <h2 tabindex="-1" class="text-xl font-bold leading-tight text-white focus:outline-none">{{ place.name }}</h2>
             <span class="text-xs font-medium text-white/60">{{ category?.singular ?? 'Lieu' }}</span>
           </div>
           <PlaceFavoriteButton :place-id="place.id" :place-name="place.name" @change="emit('favorite-change', $event)" />

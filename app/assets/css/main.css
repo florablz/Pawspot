@@ -83,6 +83,18 @@
   animation: pulse-ring 2s ease-out infinite;
 }
 
+/* Focus clavier des marqueurs : anneau orange cerclé de marron (visible sur tuile claire ou sombre). */
+.leaflet-marker-icon:focus {
+  outline: none;
+}
+
+.leaflet-marker-icon:focus-visible {
+  outline: 3px solid #FF9E40;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px #2C1810, 0 0 0 7px #2C1810;
+  border-radius: 9999px;
+}
+
 /* Leaflet controls restyle */
 .leaflet-control-zoom a {
   background: rgba(44, 24, 16, 0.7) !important;
