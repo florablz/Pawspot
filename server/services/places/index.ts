@@ -26,8 +26,9 @@ import { buildOverpassBboxQuery, buildOverpassElementQuery, runOverpassQuery } f
 import type { OverpassDeps, OverpassElement } from './overpass'
 
 export {
-  OverpassCircuit, OverpassError, OVERPASS_CIRCUIT_PAUSE_MS, OVERPASS_DEADLINE_MS, OVERPASS_ENDPOINTS, OVERPASS_TIMEOUT_MS,
-  buildOverpassBboxQuery, defaultOverpassCircuit, resetOverpassCircuit, runOverpassQuery,
+  OverpassCircuit, OverpassError, OVERPASS_CIRCUIT_PAUSE_MS, OVERPASS_DEADLINE_MS, OVERPASS_ENDPOINTS, OVERPASS_MIN_ATTEMPT_MS,
+  OVERPASS_SERVER_TIMEOUT_S, OVERPASS_TIMEOUT_MS, buildOverpassBboxQuery, configuredOverpassEndpoints, defaultOverpassCircuit,
+  parseOverpassEndpoints, parseRetryAfter, resetOverpassCircuit, runOverpassQuery, withServerTimeout,
 } from './overpass'
 export type { OverpassElement, OverpassDeps } from './overpass'
 export { elementToPlaceRow, rowToPlace, buildAddress } from './mapping'
@@ -36,8 +37,16 @@ export { elementToPlaceRow, rowToPlace, buildAddress } from './mapping'
 export const MIN_OVERPASS_ZOOM = 11
 /** Une tuile chargée il y a plus de 7 jours est rafraîchie. */
 export const TILE_TTL_MS = 7 * 24 * 60 * 60 * 1000
-/** Tuiles rafraîchies au plus par requête (rectangle de tuiles, une seule requête Overpass). */
-export const MAX_REFRESH_TILES = 16
+/**
+ * Tuiles rafraîchies au plus par requête (rectangle de tuiles, une seule requête Overpass).
+ * Seules les tuiles qui touchent la vue sont candidates, les plus proches du centre
+ * d'abord. Mesuré à Paris : une vue au zoom 15 touche 2 tuiles z12 (mobile, ou
+ * l'emprise 2.33,48.84,2.37,48.87) à 4 (bureau 1440 × 900) ; zoom 14 : 4 ; zoom 13 :
+ * 8 ; zoom 12 : ~20 à 28. 8 tuiles (~26 × 13 km) : une vue au zoom 13 tient en une
+ * requête, une vue au zoom 12 en 3 (le client relance 3 fois sur `incomplete`), et
+ * la requête reste deux fois plus légère qu'avec 16 pour une instance chargée.
+ */
+export const MAX_REFRESH_TILES = 8
 /** Au-delà de ce nombre de tuiles couvrant l'emprise, on la traite comme « zoom trop bas ». */
 export const MAX_COVERING_TILES = 64
 /** Nombre maximal de lieux renvoyés par `getPlacesInBbox`. */
@@ -45,16 +54,24 @@ export const MAX_PLACES_PER_RESPONSE = 2000
 /**
  * Délai total du rafraîchissement quand toutes les tuiles à rafraîchir ont déjà été
  * chargées une fois (des lieux, même anciens, sont en base) : mieux vaut afficher
- * vite le cache en `stale` que faire attendre. 10 s = 5 s par instance au plus.
+ * vite le cache en `stale` que faire attendre. Le temps restant passe d'instance
+ * en instance ; une instance qui expire est ensuite sautée pendant 2 minutes.
  */
 export const REFRESH_DEADLINE_CACHED_MS = 10_000
 /**
  * Délai total quand au moins une tuile n'a jamais été chargée : sans Overpass la
- * carte resterait vide à cet endroit, on attend donc plus longtemps (12,5 s par instance).
+ * carte resterait vide à cet endroit (l'utilisateur voit « Chargement… »), on attend
+ * donc plus longtemps. 40 s = 20 s au plus par instance : même si une instance ne
+ * répond jamais, la suivante garde ~20 s (une instance chargée met ~17 s).
+ * L'hébergeur doit autoriser une durée d'exécution d'au moins 45 s pour `/api/places`.
  */
-export const REFRESH_DEADLINE_EMPTY_MS = 25_000
-/** Délai total de la lecture d'un seul élément (`ensurePlace`) : petite requête, 5 s par instance. */
-export const ELEMENT_DEADLINE_MS = 10_000
+export const REFRESH_DEADLINE_EMPTY_MS = 40_000
+/**
+ * Délai total de la lecture d'un seul élément (`ensurePlace`, lieu absent de la base :
+ * rare, la carte l'a normalement déjà mis en cache). 20 s : quand l'instance principale
+ * est saturée, la suivante met ~17 s même pour une petite requête.
+ */
+export const ELEMENT_DEADLINE_MS = 20_000
 /** Un id OSM trouvé introuvable / non éligible / hors couverture n'est pas redemandé à Overpass pendant 24 h. */
 export const OSM_MISS_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -274,10 +291,11 @@ export async function selectPlacesInBbox(bbox: Bbox, deps: PlacesDeps = {}, limi
  * - emprise qui ne touche aucun territoire couvert (`COVERAGE_AREAS` de shared/geo.ts :
  *   France métropolitaine, Corse, DROM, COM) → pas d'Overpass, cache seulement,
  *   `outsideCoverage: true` (champ absent sinon) ;
- * - sinon, les tuiles z12 absentes ou chargées il y a plus de 7 jours sont rafraîchies
- *   (au plus 16 par appel, les plus proches du centre ; `incomplete: true` s'il en reste) ;
- * - échec d'Overpass sur les deux instances → données en base + `stale: true` (pas d'exception) ;
- *   délai total borné à 10 s si les tuiles ont déjà été chargées une fois, 25 s sinon ;
+ * - sinon, les tuiles z12 de la vue absentes ou chargées il y a plus de 7 jours sont
+ *   rafraîchies (au plus `MAX_REFRESH_TILES` par appel, les plus proches du centre ;
+ *   `incomplete: true` s'il en reste) ;
+ * - échec d'Overpass sur toutes les instances → données en base + `stale: true` (pas d'exception) ;
+ *   délai total borné à 10 s si les tuiles ont déjà été chargées une fois, 40 s sinon ;
  *   juste après un échec, le disjoncteur répond `stale` sans attendre (voir `overpass.ts`).
  * Une erreur de base de données, elle, est propagée.
  */
