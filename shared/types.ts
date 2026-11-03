@@ -52,11 +52,18 @@ export interface Place {
   dogStatus: DogStatus
   /** Données brutes de la source du statut (décomptes, dates…). */
   dogStatusInfo: DogStatusInfo
-  /** Texte de la source, prêt à afficher (« OpenStreetMap », « terrasse », « 3 membres, dernier retour il y a 12 jours »). */
+  /**
+   * Texte de la source, prêt à afficher après « Source : » (« OpenStreetMap »,
+   * « terrasse indiquée sur OpenStreetMap, aucune info sur les chiens »,
+   * « 3 membres, dernier retour il y a 12 jours »).
+   */
   dogStatusSource?: string
   /** Résumé de la politique OSM (`dog` / `dog:conditional`). */
   osmDogPolicy: OsmDogPolicyKind
-  /** Détail de la politique OSM, quand utile (« Uniquement la nuit (yes @ (19:00-08:00)) »). */
+  /**
+   * Détail lisible de la politique OSM, quand utile, sans syntaxe OSM
+   * (« Chiens interdits de 12 h à 14 h », « Chiens acceptés la nuit seulement »).
+   */
   osmDogDetail?: string
   /** `outdoor_seating=yes`. */
   hasTerrace: boolean
