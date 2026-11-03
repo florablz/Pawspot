@@ -4,8 +4,8 @@ import { normalizeName } from '#shared/text'
 import type { Place } from '#shared/types'
 
 export interface PlaceFilters {
-  /** Texte recherché dans le nom (sans tenir compte des accents ni de la casse). */
-  query: string
+  /** Texte recherché dans le nom (sans tenir compte des accents ni de la casse) ; sert aux suggestions. */
+  query?: string
   /** Catégories gardées ; liste vide = toutes. */
   categories: readonly CategoryKey[]
   /** Ne garder que les statuts `confirmed` et `confirmed_outside_only`. */
@@ -14,7 +14,7 @@ export interface PlaceFilters {
 
 /** Filtre les lieux déjà chargés (recherche par nom, catégories, statut chien). */
 export function filterPlaces(places: readonly Place[], filters: PlaceFilters): Place[] {
-  const q = normalizeName(filters.query)
+  const q = normalizeName(filters.query ?? '')
   const categories = filters.categories.length ? new Set(filters.categories) : null
   return places.filter(p =>
     (!categories || categories.has(p.category))

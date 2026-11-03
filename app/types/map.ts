@@ -1,3 +1,5 @@
+import type { Bbox } from '#shared/geo'
+
 export interface MapCenter {
   lat: number
   lng: number
@@ -25,6 +27,18 @@ export interface MapInsets {
   right: number
 }
 
+/** Zone à montrer après une recherche d'adresse ou de ville. */
+export interface MapArea {
+  lat: number
+  lng: number
+  /** Emprise à cadrer si connue ; sinon centrage sur le point au zoom `maxZoom`. */
+  bbox?: Bbox
+  /** Zoom au plus (une emprise minuscule ne zoome pas au-delà). */
+  maxZoom: number
+  /** Zoom au moins (une grande commune reste au zoom où les lieux se chargent). */
+  minZoom: number
+}
+
 /** Méthodes exposées par `PawspotMap` (`ref` de template). */
 export interface PawspotMapApi {
   /** `false` si la carte n'est pas encore prête. */
@@ -37,6 +51,8 @@ export interface PawspotMapApi {
   reveal: (lat: number, lng: number, insets: MapInsets, zoom?: number) => boolean
   /** Le point est-il dans la zone visible (hors marges) ? */
   isVisible: (lat: number, lng: number, insets: MapInsets) => boolean
+  /** Cadre une zone (recherche) en tenant compte des barres du haut et des marges. */
+  showArea: (area: MapArea, insets: MapInsets) => boolean
   /** Rend le focus clavier au marqueur d'un lieu (fermeture de la fiche). */
   focusMarker: (placeId: string) => boolean
 }

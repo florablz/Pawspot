@@ -33,6 +33,8 @@ defineEmits<{
   'retry': []
   'clear-filters': []
   'disable-confirmed': []
+  /** « Chercher une ville » (géolocalisation refusée). */
+  'focus-search': []
 }>()
 
 const countText = computed(() => {
@@ -72,9 +74,12 @@ const orangeBtn = 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-
 <template>
   <div class="mx-auto flex max-w-md flex-col gap-2" role="status" aria-live="polite" data-testid="map-status">
     <!-- Bandeaux d'information (discrets) -->
-    <p v-if="locationMessage" :class="notice" data-testid="notice-location">
-      <span aria-hidden="true">📍</span> {{ locationMessage }}
-    </p>
+    <div v-if="locationMessage" :class="[notice, 'flex flex-col gap-2']" data-testid="notice-location">
+      <p><span aria-hidden="true">📍</span> {{ locationMessage }}</p>
+      <button type="button" :class="[actionBtn, orangeBtn, 'self-start']" @click="$emit('focus-search')">
+        Chercher une ville
+      </button>
+    </div>
     <p v-if="outsideCoverage && loaded" :class="notice" data-testid="notice-outside-coverage">
       <span aria-hidden="true">🗺️</span> PawSpot couvre la France et les territoires d'outre-mer : revenez sur une zone française pour voir les lieux.
     </p>
