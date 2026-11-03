@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   computeAlertFlags,
   computeDogStatus,
+  describeDogCondition,
+  describeDogConditionalRule,
   describeDogStatusSource,
+  DOG_STATUS_LABELS,
   isDogStatusConfirmed,
   isNightCondition,
+  OSM_DETAIL_FALLBACKS,
   parseDogConditional,
   parseDogPolicy,
   parseOsmDogPolicy,
   parseTimeRanges,
+  TERRACE_SOURCE_TEXT,
 } from '../../../../shared/dogStatus'
 import type { AlertSignal, DogReportInput, DogStatusInfo } from '../../../../shared/dogStatus'
 
@@ -76,7 +81,7 @@ describe('computeDogStatus — tableau §3.8 bis', () => {
   it('osm_conditional porte le détail de la condition', () => {
     const { info } = computeDogStatus({ now: NOW, tags: { 'dog:conditional': 'yes @ (19:00-08:00)' } })
     expect(info.source).toBe('osm')
-    expect(info.osmDetail).toBe('Uniquement la nuit (yes @ (19:00-08:00))')
+    expect(info.osmDetail).toBe('Chiens acceptés de 19 h à 8 h seulement')
   })
 
   it('likely_terrace : aucun retour ni tag chien, mais outdoor_seating=yes', () => {
@@ -301,7 +306,8 @@ describe('describeDogStatusSource', () => {
 
   it('OpenStreetMap / terrasse / rien', () => {
     expect(describeDogStatusSource({ source: 'osm', reports: { ...reports, total: 0 } })).toBe('OpenStreetMap')
-    expect(describeDogStatusSource({ source: 'terrace', reports })).toBe('terrasse')
+    expect(describeDogStatusSource({ source: 'terrace', reports })).toBe(TERRACE_SOURCE_TEXT)
+    expect(TERRACE_SOURCE_TEXT).toBe('terrasse indiquée sur OpenStreetMap, aucune info sur les chiens')
     expect(describeDogStatusSource({ source: 'none', reports })).toBeUndefined()
   })
 
@@ -322,5 +328,112 @@ describe('describeDogStatusSource', () => {
     expect(isDogStatusConfirmed('confirmed_outside_only')).toBe(true)
     expect(isDogStatusConfirmed('osm_yes')).toBe(false)
     expect(isDogStatusConfirmed('refused')).toBe(false)
+  })
+})
+
+describe('libellés du statut chien', () => {
+  it('textes lisibles, au vouvoiement', () => {
+    expect(DOG_STATUS_LABELS.osm_yes.label).toBe('Accepté')
+    expect(DOG_STATUS_LABELS.refused.label).toBe('Chiens refusés')
+    expect(DOG_STATUS_LABELS.unknown.label).toBe('Info non disponible : soyez le premier à nous le dire !')
+  })
+
+  it('aucun libellé ne contient de syntaxe OSM ni de tutoiement', () => {
+    for (const { label } of Object.values(DOG_STATUS_LABELS)) {
+      expect(label).not.toMatch(/[@;]|\bOSM\b|\b(tu|ton|ta|tes)\b/i)
+    }
+  })
+})
+
+describe('describeDogCondition — traduction des conditions OSM', () => {
+  it.each([
+    ['12:00-14:00', 'de 12 h à 14 h'],
+    ['12:30-14:45', 'de 12 h 30 à 14 h 45'],
+    ['22:00-24:00', 'de 22 h à minuit'],
+    ['00:00-06:00', 'de minuit à 6 h'],
+    ['10:00-12:00,14:00-16:00', 'de 10 h à 12 h et de 14 h à 16 h'],
+    ['Jul 1', 'le 1er juillet'],
+    ['Jul 14', 'le 14 juillet'],
+    ['Jun 01-15', 'du 1er au 15 juin'],
+    ['Oct 1-Mar 31', 'du 1er octobre au 31 mars'],
+    ['Jun 15-Sep 15', 'du 15 juin au 15 septembre'],
+    ['Oct-Mar', 'd\'octobre à mars'],
+    ['Apr-Sep', 'd\'avril à septembre'],
+    ['(Jun-Sep)', 'de juin à septembre'],
+    ['Aug', 'en août'],
+    ['Jul 10:00-12:00', 'en juillet, de 10 h à 12 h'],
+    ['Sa,Su', 'le samedi et le dimanche'],
+    ['Mo-Fr 08:00-20:00', 'du lundi au vendredi, de 8 h à 20 h'],
+    ['Jun-Sep Sa,Su 10:00-18:00', 'de juin à septembre, le samedi et le dimanche, de 10 h à 18 h'],
+    ['PH', 'les jours fériés'],
+    ['SH', 'pendant les vacances scolaires'],
+    ['sunset-sunrise', 'du coucher au lever du soleil'],
+    ['dawn-dusk', 'de l\'aube au crépuscule'],
+    ['night', 'la nuit'],
+    ['summer', 'en été'],
+  ])('« %s » → « %s »', (condition, expected) => {
+    expect(describeDogCondition(condition)).toBe(expected)
+  })
+
+  it.each(['foo', 'Xyz 12:00', '25:00-26:00', '24:30-02:00', 'Jun 32', '', '   '])('condition non reconnue « %s » → undefined (rien d\'inventé)', (condition) => {
+    expect(describeDogCondition(condition)).toBeUndefined()
+  })
+})
+
+describe('describeDogConditionalRule', () => {
+  it('interdiction : « Chiens interdits … »', () => {
+    expect(describeDogConditionalRule({ value: 'no', condition: '12:00-14:00' })).toBe('Chiens interdits de 12 h à 14 h')
+    // « seulement » n'est jamais ajouté à une interdiction.
+    expect(describeDogConditionalRule({ value: 'no', condition: '12:00-14:00' }, true)).toBe('Chiens interdits de 12 h à 14 h')
+  })
+
+  it('autorisation avec « seulement » et élision', () => {
+    expect(describeDogConditionalRule({ value: 'leashed', condition: 'Oct-Mar' }, true)).toBe('Chiens acceptés en laisse d\'octobre à mars seulement')
+    expect(describeDogConditionalRule({ value: 'yes', condition: 'night' })).toBe('Chiens acceptés la nuit')
+  })
+
+  it('valeur ou condition inconnue → undefined', () => {
+    expect(describeDogConditionalRule({ value: 'other', condition: '12:00-14:00' })).toBeUndefined()
+    expect(describeDogConditionalRule({ value: 'yes', condition: 'n\'importe quoi' })).toBeUndefined()
+  })
+})
+
+describe('détail osm_conditional affiché (parseOsmDogPolicy.detail)', () => {
+  const detail = (tags: Record<string, string>) => computeDogStatus({ now: NOW, tags }).info.osmDetail
+
+  it.each<[Record<string, string>, string]>([
+    [{ 'dog': 'yes', 'dog:conditional': 'no @ (Jun-Sep)' }, 'Chiens interdits de juin à septembre'],
+    [{ 'dog': 'no', 'dog:conditional': 'yes @ (Oct-May)' }, 'Chiens acceptés d\'octobre à mai seulement'],
+    [{ 'dog': 'no', 'dog:conditional': 'yes @ (19:00-08:00)' }, 'Chiens acceptés de 19 h à 8 h seulement'],
+    [{ 'dog:conditional': 'yes @ night' }, 'Chiens acceptés la nuit seulement'],
+    [{ 'dog': 'outside', 'dog:conditional': 'no @ (Jul-Aug)' }, 'Uniquement à l\'extérieur ; chiens interdits de juillet à août'],
+    [{ 'dog': 'yes', 'dog:conditional': 'no @ (12:00-14:00); no @ (Sa)' }, 'Chiens interdits de 12 h à 14 h ; chiens interdits le samedi'],
+  ])('%o → « %s »', (tags, expected) => {
+    expect(detail(tags)).toBe(expected)
+  })
+
+  it.each<[Record<string, string>, string]>([
+    [{ 'dog': 'yes', 'dog:conditional': 'no @ (bizarre)' }, OSM_DETAIL_FALLBACKS.restricted],
+    [{ 'dog': 'no', 'dog:conditional': 'yes @ (bizarre)' }, OSM_DETAIL_FALLBACKS.conditional_yes],
+    [{ 'dog:conditional': 'yes @ (strange thing)' }, OSM_DETAIL_FALLBACKS.conditional_yes],
+    [{ 'dog:conditional': 'yes @ (bizarre night)' }, OSM_DETAIL_FALLBACKS.night_only],
+    // Une seule règle non traduisible suffit : pas de phrase à moitié traduite.
+    [{ 'dog': 'yes', 'dog:conditional': 'no @ (12:00-14:00); no @ (bizarre)' }, OSM_DETAIL_FALLBACKS.restricted],
+  ])('condition inconnue %o → texte générique', (tags, expected) => {
+    expect(detail(tags)).toBe(expected)
+  })
+
+  it('jamais de syntaxe OSM dans le détail', () => {
+    for (const conditional of ['no @ (Jun-Sep)', 'yes @ (bizarre)', 'no @ (Mo-Fr 12:00-14:00); no @ (PH)', 'yes @ (sunset-sunrise)']) {
+      for (const dog of ['yes', 'no', 'outside', undefined]) {
+        const d = detail({ ...(dog ? { dog } : {}), 'dog:conditional': conditional })
+        if (d) expect(d).not.toMatch(/@|\(|\)|\b(yes|no|Jun|Sep|Mo|Fr|PH)\b/)
+      }
+    }
+  })
+
+  it('pas de détail pour un oui franc', () => {
+    expect(detail({ dog: 'yes' })).toBeUndefined()
+    expect(detail({ dog: 'leashed', 'dog:conditional': 'yes @ (Jun-Sep)' })).toBeUndefined()
   })
 })
