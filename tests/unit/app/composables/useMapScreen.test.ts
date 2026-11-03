@@ -1,10 +1,12 @@
 import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import type { Place } from '#shared/types'
+import type { GeocodeResultType, Place } from '#shared/types'
 import { PLACE_ZOOM, useMapScreen } from '~/composables/useMapScreen'
 import type { MapView, PawspotMapApi } from '~/types/map'
 import { parseViewQuery } from '~/utils/mapUrl'
+import { GEOCODE_ZOOM, geocodeMinZoom } from '~/utils/searchSuggestions'
+import { geocodeOfType, GEOCODE_LYON } from '../_geocode'
 import { makePlace } from '../_helpers'
 
 /**
@@ -20,12 +22,16 @@ const view = ref<MapView | null>(null)
 const settled = ref(false)
 const selected = ref<Place | null>(null)
 const fetchPlaces = vi.fn()
+const closeSheet = vi.fn(() => {
+  selected.value = null
+})
 
 const map = {
   flyTo: vi.fn(() => true),
   getView: vi.fn<() => MapView | null>(() => null),
   reveal: vi.fn(() => true),
   isVisible: vi.fn(() => false),
+  showArea: vi.fn(() => true),
   focusMarker: vi.fn(),
 }
 
@@ -45,7 +51,7 @@ beforeEach(() => {
     longitude.value = -0.5792
   })
 
-  for (const [name, fn] of Object.entries({ ref, computed, watch, nextTick, onMounted, onBeforeUnmount, parseViewQuery })) vi.stubGlobal(name, fn)
+  for (const [name, fn] of Object.entries({ ref, computed, watch, nextTick, onMounted, onBeforeUnmount, parseViewQuery, GEOCODE_ZOOM, geocodeMinZoom })) vi.stubGlobal(name, fn)
   vi.stubGlobal('useRoute', () => route)
   vi.stubGlobal('useUserLocation', () => ({ latitude, longitude, loading: ref(false), error: locationError, getLocation }))
   vi.stubGlobal('usePlaces', () => ({
@@ -55,9 +61,9 @@ beforeEach(() => {
     shouldShowSearchHere: () => false,
     fetchPlaces,
   }))
-  vi.stubGlobal('useFilters', () => ({ categories: ref([]), confirmedOnly: ref(false), nameQuery: ref(''), filtersActive: ref(false), clearFilters: vi.fn() }))
+  vi.stubGlobal('useFilters', () => ({ categories: ref([]), confirmedOnly: ref(false), filtersActive: ref(false), clearFilters: vi.fn() }))
   vi.stubGlobal('useMapView', () => ({ view, settled }))
-  vi.stubGlobal('usePlaceSheet', () => ({ selected, snap: ref('peek'), peekHeight: ref(null), open: vi.fn(), close: vi.fn() }))
+  vi.stubGlobal('usePlaceSheet', () => ({ selected, snap: ref('peek'), peekHeight: ref(null), open: vi.fn(), close: closeSheet }))
   vi.stubGlobal('useMapUrlSync', () => {})
   vi.stubGlobal('filterPlaces', (places: Place[]) => places)
   vi.stubGlobal('matchesMedia', () => false)
@@ -114,11 +120,8 @@ describe('useMapScreen — position de départ', () => {
     expect(map.flyTo).not.toHaveBeenCalled()
   })
 
-  // BUG (front, app/composables/useMapScreen.ts) : `startView` prend la dernière vue de la
-  // session avant le lieu ouvert, et `onMapReady` ne montre alors pas le lieu. Sur `/lieu/<id>`
-  // sans vue dans l'URL après être déjà passé par la carte, la fiche s'ouvre sur un lieu hors
-  // de la carte. Ordre attendu (commentaire du composable) : URL > lieu ouvert > dernière vue.
-  it.fails('lieu ouvert avant la dernière vue de la session', () => {
+  // Corrigé par front (6e5e8c1) : `/lieu/<id>` sans vue dans l'URL après un passage sur la carte.
+  it('lieu ouvert avant la dernière vue de la session', () => {
     view.value = SESSION_VIEW
     selected.value = PLACE
     const s = screen()
@@ -187,5 +190,135 @@ describe('useMapScreen — position de départ', () => {
     const s = screen()
     route.query = { lat: '45.764', lon: '4.8357', z: '14' }
     expect(s.startView).toEqual({ lat: 48.8566, lng: 2.3522, zoom: 15 })
+  })
+})
+
+describe('useMapScreen — résultat de recherche (goToResult)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const NO_INSETS = { bottom: 0, right: 0 }
+
+  it.each<[GeocodeResultType, number, number]>([
+    ['address', 18, 11],
+    ['place', 17, 11],
+    ['street', 16, 11],
+    ['postcode', 14, 11],
+    ['city', 13, 11],
+    ['region', 9, 0],
+  ])('%s : showArea au zoom %i au plus, %i au moins', (type, maxZoom, minZoom) => {
+    const s = screen()
+    const result = geocodeOfType(type)
+    s.goToResult(result)
+    expect(map.showArea).toHaveBeenCalledTimes(1)
+    expect(map.showArea).toHaveBeenCalledWith({ lat: result.lat, lng: result.lon, bbox: result.bbox, maxZoom, minZoom }, NO_INSETS)
+  })
+
+  it('zoom au moins 11 (celui où les lieux se chargent) pour tout sauf une région', () => {
+    for (const type of ['address', 'place', 'street', 'postcode', 'city'] as const) {
+      expect(geocodeMinZoom(type)).toBeGreaterThanOrEqual(11)
+      expect(GEOCODE_ZOOM[type]).toBeGreaterThanOrEqual(11)
+    }
+    expect(geocodeMinZoom('region')).toBeLessThan(11)
+  })
+
+  it('transmet l\'emprise fournie par l\'API (ville)', () => {
+    const s = screen()
+    const lyon = GEOCODE_LYON.results[0]!
+    s.goToResult(lyon)
+    expect(map.showArea).toHaveBeenCalledWith(expect.objectContaining({ bbox: lyon.bbox, maxZoom: 13 }), NO_INSETS)
+  })
+
+  it('ferme la fiche ouverte', () => {
+    selected.value = PLACE
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    expect(closeSheet).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans fiche ouverte : rien à fermer', () => {
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    expect(closeSheet).not.toHaveBeenCalled()
+  })
+
+  it('pose la vue (plus de géolocalisation qui déplacerait la carte)', () => {
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    expect(settled.value).toBe(true)
+  })
+
+  it('charge les lieux au moveend suivant, une seule fois', async () => {
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    expect(fetchPlaces).not.toHaveBeenCalled()
+    const annecy: MapView = { center: { lat: 45.8992, lng: 6.1294 }, zoom: 13, bbox: '6.10,45.88,6.16,45.92' }
+    s.onViewChange(annecy)
+    expect(fetchPlaces).toHaveBeenCalledTimes(1)
+    expect(fetchPlaces).toHaveBeenCalledWith(annecy)
+
+    // Le secours ne recharge pas une seconde fois.
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(fetchPlaces).toHaveBeenCalledTimes(1)
+  })
+
+  it('carte immobile (même vue) : le secours charge la vue courante après 1,5 s', async () => {
+    const current: MapView = { center: { lat: 45.8992, lng: 6.1294 }, zoom: 13, bbox: '6.10,45.88,6.16,45.92' }
+    map.getView.mockReturnValue(current)
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    await vi.advanceTimersByTimeAsync(1499)
+    expect(fetchPlaces).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetchPlaces).toHaveBeenCalledTimes(1)
+    expect(fetchPlaces).toHaveBeenCalledWith(current)
+  })
+
+  it('deux recherches rapprochées : un seul chargement de secours', async () => {
+    const current: MapView = { center: { lat: 45.8992, lng: 6.1294 }, zoom: 13, bbox: '6.10,45.88,6.16,45.92' }
+    map.getView.mockReturnValue(current)
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    await vi.advanceTimersByTimeAsync(1000)
+    s.goToResult(geocodeOfType('postcode'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchPlaces).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(fetchPlaces).toHaveBeenCalledTimes(1)
+  })
+
+  it('carte pas encore prête : rien ne se passe', async () => {
+    let api!: ReturnType<typeof useMapScreen>
+    mount(defineComponent({
+      setup() {
+        api = useMapScreen(ref(null))
+        return () => h('div')
+      },
+    }))
+    selected.value = PLACE
+    api.goToResult(geocodeOfType('city'))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(closeSheet).not.toHaveBeenCalled()
+    expect(fetchPlaces).not.toHaveBeenCalled()
+  })
+
+  it('le secours est annulé au démontage', async () => {
+    map.getView.mockReturnValue({ center: { lat: 45.9, lng: 6.13 }, zoom: 13, bbox: '6.10,45.88,6.16,45.92' })
+    let api!: ReturnType<typeof useMapScreen>
+    const wrapper = mount(defineComponent({
+      setup() {
+        api = useMapScreen(ref(map as unknown as PawspotMapApi))
+        return () => h('div')
+      },
+    }))
+    api.goToResult(geocodeOfType('city'))
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(fetchPlaces).not.toHaveBeenCalled()
   })
 })
