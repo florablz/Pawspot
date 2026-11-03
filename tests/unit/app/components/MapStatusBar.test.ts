@@ -20,6 +20,7 @@ interface Props {
   error: string | null
   stale: boolean
   zoomTooLow: boolean
+  outsideCoverage?: boolean
   truncated: boolean
   incomplete: boolean
   locationMessage: string | null
@@ -42,7 +43,7 @@ const BASE: Props = {
 }
 
 const bar = (props: Partial<Props> = {}) => mount(MapStatusBar, { props: { ...BASE, ...props } })
-const NOTICES = ['location', 'zoom', 'truncated', 'stale', 'incomplete'] as const
+const NOTICES = ['location', 'outside-coverage', 'zoom', 'truncated', 'stale', 'incomplete'] as const
 const visibleNotices = (wrapper: ReturnType<typeof bar>) =>
   NOTICES.filter(n => wrapper.find(`[data-testid="notice-${n}"]`).exists())
 
@@ -177,6 +178,25 @@ describe('MapStatusBar', () => {
       ['filtre « Confirmés » inactif', { confirmedOnly: false }],
     ])('absent si %s', (_label, props) => {
       expect(bar({ ...confirmedEmpty, ...props }).find('[data-testid="notice-confirmed-empty"]').exists()).toBe(false)
+    })
+  })
+
+  describe('zone hors couverture', () => {
+    it('bandeau dédié une fois la zone chargée, sans « Aucun lieu trouvé »', () => {
+      const wrapper = bar({ outsideCoverage: true, count: 0, loadedCount: 0 })
+      expect(visibleNotices(wrapper)).toEqual(['outside-coverage'])
+      expect(wrapper.get('[data-testid="notice-outside-coverage"]').text()).toContain('PawSpot couvre la France')
+      expect(wrapper.text()).not.toContain('Aucun lieu trouvé')
+    })
+
+    it('masque le bandeau « Zoomez » quand le zoom est aussi trop faible', () => {
+      const wrapper = bar({ outsideCoverage: true, zoomTooLow: true, count: 0, loadedCount: 0 })
+      expect(visibleNotices(wrapper)).toEqual(['outside-coverage'])
+      expect(wrapper.text()).not.toContain('Zoomez sur une ville')
+    })
+
+    it('absent tant que rien n\'est chargé', () => {
+      expect(visibleNotices(bar({ outsideCoverage: true, loaded: false, count: 0, loadedCount: 0 }))).toEqual([])
     })
   })
 
