@@ -73,7 +73,7 @@ function removePhoto(index: number) {
 
 async function submit() {
   if (rating.value < 1) {
-    errorMsg.value = 'Choisis une note de 1 à 5 étoiles.'
+    errorMsg.value = 'Choisissez une note de 1 à 5 étoiles.'
     return
   }
   errorMsg.value = ''
@@ -131,13 +131,13 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
         :to="loginLink"
         class="flex min-h-[44px] items-center rounded-full bg-paw-orange-500/20 px-4 text-xs font-medium text-paw-orange-300 transition hover:bg-paw-orange-500/40"
       >
-        Connecte-toi pour donner un avis
+        Connectez-vous pour donner un avis
       </NuxtLink>
     </div>
 
     <form v-if="showForm" class="mb-5 rounded-2xl bg-paw-brown-800/60 p-4" @submit.prevent="submit">
       <fieldset class="mb-3">
-        <legend class="mb-1 text-xs text-white/70">Ta note</legend>
+        <legend class="mb-1 text-xs text-white/70">Votre note</legend>
         <div class="flex items-center">
           <button
             v-for="i in 5"
@@ -171,7 +171,7 @@ watch(() => props.placeId, () => loadReviews(), { immediate: true })
         class="mb-1 w-full resize-none rounded-xl bg-paw-brown-900/60 px-4 py-3 text-sm text-white placeholder-white/60 outline-none ring-1 ring-white/10 transition focus:ring-paw-orange-500/50"
         rows="3"
         :maxlength="REVIEW_COMMENT_MAX_LENGTH"
-        placeholder="Ton avis…"
+        placeholder="Votre avis…"
       />
       <p class="mb-3 text-right text-[11px] text-white/50">{{ comment.length }} / {{ REVIEW_COMMENT_MAX_LENGTH }}</p>
 
