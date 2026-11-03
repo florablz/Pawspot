@@ -238,23 +238,65 @@ class AttemptTimeout extends Error {
 }
 
 /**
- * `fetch` + lecture du JSON, bornés à `ms` : le signal annule la requête, et la
- * course avec le minuteur garantit le délai même si `fetch` ignorait le signal.
+ * Intervalle de contrôle de l'horloge murale pendant un essai. Les minuteurs de Node
+ * (`setTimeout`) suivent une horloge monotone qui, sous macOS, s'arrête pendant la
+ * mise en veille de l'ordinateur : un essai de 90 s commencé avant une veille de
+ * 18 minutes ne se terminait qu'à la reprise + le reste des 90 s, soit ~19 min
+ * « réelles » (constaté le 2026-11-03 avec `places:prefetch`). On vérifie donc aussi
+ * `Date.now()` chaque seconde : à la reprise, l'essai expiré est coupé tout de suite.
+ */
+export const ATTEMPT_CLOCK_CHECK_MS = 1_000
+
+/**
+ * Arme l'expiration d'un essai de `ms` : `onExpire` est appelé dès que `ms` se sont
+ * écoulées sur l'horloge murale (`Date.now()`) ou sur l'horloge monotone
+ * (`performance.now()`, insensible aux changements d'heure), la première des deux.
+ * Renvoie la fonction qui désarme le minuteur.
+ */
+export function armAttemptTimer(ms: number, onExpire: () => void): () => void {
+  const wallDeadline = Date.now() + ms
+  const monoStart = performance.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let done = false
+  const tick = () => {
+    if (done) return
+    const left = Math.min(wallDeadline - Date.now(), ms - (performance.now() - monoStart))
+    if (left <= 0) {
+      done = true
+      onExpire()
+      return
+    }
+    timer = setTimeout(tick, Math.min(left, ATTEMPT_CLOCK_CHECK_MS))
+  }
+  timer = setTimeout(tick, Math.min(Math.max(0, ms), ATTEMPT_CLOCK_CHECK_MS))
+  return () => {
+    done = true
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * `fetch` + lecture complète du corps (JSON), bornés ensemble à `ms` : le minuteur
+ * est armé avant `fetch`, le signal annule la requête et la lecture du corps, et la
+ * course avec le minuteur garantit le délai même si `fetch` (ou le corps) ignorait
+ * le signal ; le corps est alors abandonné (`cancel`) pour libérer la connexion.
  */
 async function fetchJson(doFetch: typeof fetch, endpoint: string, init: RequestInit, ms: number): Promise<{ status: number; data?: OverpassResponse; retryAfterMs?: number }> {
   const controller = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let response: Response | undefined
+  let disarm: (() => void) | undefined
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
+    disarm = armAttemptTimer(ms, () => {
       const err = new AttemptTimeout()
       controller.abort(err)
+      cancelBody(response, err)
       reject(err)
-    }, ms)
+    })
   })
   const work = (async () => {
-    const response = await doFetch(endpoint, { ...init, signal: controller.signal })
+    response = await doFetch(endpoint, { ...init, signal: controller.signal })
     if (!response.ok) {
-      response.body?.cancel().catch(() => {})
+      cancelBody(response)
       return { status: response.status, retryAfterMs: parseRetryAfter(response.headers.get('retry-after'), Date.now()) }
     }
     return { status: response.status, data: await response.json() as OverpassResponse }
@@ -264,7 +306,17 @@ async function fetchJson(doFetch: typeof fetch, endpoint: string, init: RequestI
     return await Promise.race([work, timeout])
   }
   finally {
-    clearTimeout(timer)
+    disarm?.()
+  }
+}
+
+function cancelBody(response: Response | undefined, reason?: unknown): void {
+  try {
+    // Corps déjà en cours de lecture (verrouillé) : `cancel` rejette, le signal suffit alors.
+    response?.body?.cancel(reason).catch(() => {})
+  }
+  catch {
+    // Corps déjà consommé : rien à libérer.
   }
 }
 
