@@ -28,7 +28,6 @@ export default defineEventHandler(async (event) => {
     rating,
     comment,
     photos,
-    userId: user.id,
     username: user.username,
     avatarUrl: user.avatarUrl,
     createdAt: inserted.createdAt,

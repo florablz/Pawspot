@@ -14,7 +14,10 @@ function parsePhotos(raw: string | null): string[] {
   }
 }
 
-/** `GET /api/reviews/:placeId` → avis du lieu, plus récents d'abord. */
+/**
+ * `GET /api/reviews/:placeId` → avis du lieu, plus récents d'abord. Auteur exposé par
+ * `username` / `avatarUrl` uniquement (ni `userId`, ni email).
+ */
 export default defineEventHandler(async (event) => {
   const placeId = getPlaceIdParam(event)
 
@@ -26,7 +29,6 @@ export default defineEventHandler(async (event) => {
       comment: reviews.comment,
       photos: reviews.photos,
       createdAt: reviews.createdAt,
-      userId: reviews.userId,
       username: users.username,
       avatarUrl: users.avatarUrl,
     })
