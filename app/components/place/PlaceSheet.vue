@@ -9,7 +9,6 @@ import type { Place } from '#shared/types'
  */
 const props = defineProps<{
   place: Place
-  origin?: { lat: number, lng: number } | null
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -123,7 +122,8 @@ const iconBtn = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-ful
         </PlaceHeader>
 
         <div class="flex gap-2">
-          <PlaceItineraryLink :place="place" :origin="origin" class="flex-1" />
+          <PlaceItineraryLink :place="place" class="min-w-0 flex-1" />
+          <PlaceShareButton :place="place" />
           <button
             type="button"
             class="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-white/15 px-4 text-sm font-medium text-white transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paw-orange-300 lg:hidden"
@@ -141,7 +141,7 @@ const iconBtn = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-ful
       :class="snap === 'full' ? 'overflow-y-auto' : 'overflow-hidden'"
       @focusin="onContentFocus"
     >
-      <PlaceDetails :place="place" :origin="origin" embedded class="pt-4" />
+      <PlaceDetails :place="place" embedded class="pt-4" />
     </div>
   </section>
 </template>
