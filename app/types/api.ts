@@ -18,7 +18,6 @@ export interface PlaceReview {
   rating: number
   comment: string | null
   photos: string[]
-  userId?: number
   username: string
   avatarUrl?: string | null
   createdAt: string
