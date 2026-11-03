@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveImage, sanitizeHttpUrl, sanitizeWebsite } from '../../../../shared/url'
+import { resolveImage, sanitizeHttpUrl, sanitizeImageUrl, sanitizeWebsite } from '../../../../shared/url'
 
 describe('sanitizeWebsite', () => {
   it.each([
@@ -77,9 +77,19 @@ describe('resolveImage', () => {
       .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/Caf%C3%A9%20de%20Flore.jpg?width=600')
   })
 
-  it('renvoie une URL directe http(s)', () => {
+  it('renvoie une URL directe https', () => {
     expect(resolveImage({ image: 'https://example.org/photo.jpg' })).toBe('https://example.org/photo.jpg')
-    expect(resolveImage({ image: 'http://example.org/photo.png' })).toBe('http://example.org/photo.png')
+  })
+
+  it('refuse une image en http: (contenu mixte), même sur commons', () => {
+    expect(resolveImage({ image: 'http://example.org/photo.png' })).toBeUndefined()
+    expect(resolveImage({ image: 'HTTP://example.org/photo.png' })).toBeUndefined()
+    expect(resolveImage({ image: 'http://commons.wikimedia.org/wiki/File:A.jpg' })).toBeUndefined()
+  })
+
+  it('se replie sur wikimedia_commons quand image est en http:', () => {
+    expect(resolveImage({ image: 'http://example.org/a.jpg', wikimedia_commons: 'File:B.jpg' }))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/B.jpg?width=600')
   })
 
   it.each(['javascript:alert(1)', 'data:image/png;base64,AAAA', 'photo.jpg', 'https://user:pass@exemple.fr/a.jpg'])('refuse image=%s', (image) => {
@@ -103,5 +113,31 @@ describe('resolveImage', () => {
 
   it('renvoie undefined sans tag image', () => {
     expect(resolveImage({})).toBeUndefined()
+  })
+})
+
+describe('sanitizeImageUrl', () => {
+  it('garde une URL https valide, normalisée', () => {
+    expect(sanitizeImageUrl('  https://exemple.fr/photo.jpg ')).toBe('https://exemple.fr/photo.jpg')
+    expect(sanitizeImageUrl('HTTPS://Exemple.fr/a.jpg')).toBe('https://exemple.fr/a.jpg')
+  })
+
+  it.each([
+    'http://exemple.fr/photo.jpg',
+    '//exemple.fr/photo.jpg',
+    'exemple.fr/photo.jpg',
+    'javascript:alert(1)',
+    'data:image/png;base64,AAAA',
+    'https://user:pass@exemple.fr/a.jpg',
+    'https://localhost/a.jpg',
+    '',
+  ])('refuse %s', (value) => {
+    expect(sanitizeImageUrl(value)).toBeUndefined()
+  })
+
+  it('refuse null, undefined et les valeurs non texte', () => {
+    expect(sanitizeImageUrl(null)).toBeUndefined()
+    expect(sanitizeImageUrl(undefined)).toBeUndefined()
+    expect(sanitizeImageUrl(42 as unknown as string)).toBeUndefined()
   })
 })
