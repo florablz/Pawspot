@@ -5,11 +5,15 @@ const GEOLOCATION_ERRORS: Record<number, string> = {
   3: 'La localisation a pris trop de temps.',
 }
 
+/**
+ * Position de l'utilisateur, partagée entre la carte et la fiche (itinéraire).
+ * Jamais envoyée au serveur (§5 RGPD).
+ */
 export const useUserLocation = () => {
-  const latitude = ref<number | null>(null)
-  const longitude = ref<number | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const latitude = useState<number | null>('user-location-lat', () => null)
+  const longitude = useState<number | null>('user-location-lon', () => null)
+  const loading = useState('user-location-loading', () => false)
+  const error = useState<string | null>('user-location-error', () => null)
 
   const getLocation = () =>
     new Promise<void>((resolve, reject) => {

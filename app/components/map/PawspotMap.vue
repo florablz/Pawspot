@@ -2,18 +2,23 @@
 import type * as Leaflet from 'leaflet'
 import { CATEGORIES, DEFAULT_CATEGORY_COLOR, DEFAULT_CATEGORY_ICON } from '#shared/categories'
 import type { Place } from '#shared/types'
-import type { MapView } from '~/types/map'
+import type { MapInsets, MapStartView, MapView, PawspotMapApi } from '~/types/map'
 
 const props = defineProps<{
+  /** Position de l'utilisateur (repère orange), ou `null`. */
   latitude: number | null
   longitude: number | null
   places: Place[]
-  selectedPlace?: Place | null
+  selectedPlaceId?: string | null
+  /** Vue de départ ; sinon position de l'utilisateur si déjà connue, sinon France entière. */
+  startView?: MapStartView | null
 }>()
 
 const emit = defineEmits<{
   'update:view': [view: MapView]
   'select-place': [place: Place]
+  /** La carte Leaflet est créée (les méthodes exposées fonctionnent). */
+  'ready': []
 }>()
 
 /** Vue « France entière » (géolocalisation refusée ou en attente). */
@@ -25,6 +30,9 @@ const MARKER_HIT_SIZE = 44
 const mapEl = ref<HTMLElement | null>(null)
 let map: Leaflet.Map | null = null
 let markersLayer: Leaflet.LayerGroup | null = null
+/** Marqueurs par id de lieu (focus au clavier, mise à jour du marqueur sélectionné). */
+const markers = new Map<string, { marker: Leaflet.Marker, place: Place }>()
+let renderedSelectedId: string | null = null
 let userMarker: Leaflet.Marker | null = null
 let L: typeof Leaflet | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -102,6 +110,23 @@ function createUserIcon(lib: typeof Leaflet): Leaflet.DivIcon {
   })
 }
 
+function reducedMotion(): boolean {
+  return matchesMedia(REDUCED_MOTION_QUERY)
+}
+
+/** Nom + statut chien pour les lecteurs d'écran (le marqueur est focusable au clavier). */
+function labelMarker(marker: Leaflet.Marker, place: Place) {
+  marker.getElement()?.setAttribute('aria-label', `${place.name}. ${dogStatusAccessibleText(place.dogStatus, place.dogStatusSource)}`)
+}
+
+function styleMarker(id: string, selected: boolean) {
+  const entry = markers.get(id)
+  if (!entry || !L) return
+  entry.marker.setIcon(createPlaceIcon(L, entry.place, selected))
+  entry.marker.setZIndexOffset(selected ? 500 : 0)
+  labelMarker(entry.marker, entry.place)
+}
+
 const renderMarkers = () => {
   if (!map || !L) return
 
@@ -110,9 +135,11 @@ const renderMarkers = () => {
   } else {
     markersLayer = L.layerGroup().addTo(map)
   }
+  markers.clear()
 
+  const selectedId = props.selectedPlaceId ?? null
   for (const place of props.places) {
-    const isSelected = props.selectedPlace?.id === place.id
+    const isSelected = selectedId === place.id
     const marker = L.marker([place.lat, place.lon], {
       icon: createPlaceIcon(L, place, isSelected),
       title: place.name,
@@ -120,9 +147,19 @@ const renderMarkers = () => {
     })
       .on('click', () => emit('select-place', place))
       .addTo(markersLayer)
-    // Nom + statut chien pour les lecteurs d'écran (le marqueur est focusable au clavier).
-    marker.getElement()?.setAttribute('aria-label', `${place.name}. ${dogStatusAccessibleText(place.dogStatus, place.dogStatusSource)}`)
+    labelMarker(marker, place)
+    markers.set(place.id, { marker, place })
   }
+  renderedSelectedId = selectedId
+}
+
+/** Changement de sélection : seuls l'ancien et le nouveau marqueur sont redessinés. */
+function updateSelection() {
+  const next = props.selectedPlaceId ?? null
+  if (next === renderedSelectedId) return
+  if (renderedSelectedId) styleMarker(renderedSelectedId, false)
+  if (next) styleMarker(next, true)
+  renderedSelectedId = next
 }
 
 const updateUserMarker = () => {
@@ -151,12 +188,16 @@ onMounted(async () => {
   L = leaflet.default
 
   const located = props.latitude != null && props.longitude != null
-  const startLat = located ? props.latitude! : FRANCE_VIEW.lat
-  const startLng = located ? props.longitude! : FRANCE_VIEW.lng
-  const startZoom = located ? USER_ZOOM : FRANCE_VIEW.zoom
+  const start = props.startView
+    ?? (located ? { lat: props.latitude!, lng: props.longitude!, zoom: USER_ZOOM } : FRANCE_VIEW)
 
-  const leafletMap = L.map(mapEl.value, { zoomControl: false })
-    .setView([startLat, startLng], startZoom)
+  const animate = !reducedMotion()
+  const leafletMap = L.map(mapEl.value, {
+    zoomControl: false,
+    zoomAnimation: animate,
+    fadeAnimation: animate,
+    markerZoomAnimation: animate,
+  }).setView([start.lat, start.lng], start.zoom)
   map = leafletMap
   // Boutons de zoom en français (taille 44 px dans main.css).
   L.control.zoom({ zoomInTitle: 'Zoomer', zoomOutTitle: 'Dézoomer' }).addTo(leafletMap)
@@ -175,6 +216,7 @@ onMounted(async () => {
 
   updateUserMarker()
   renderMarkers()
+  emit('ready')
   emitView()
 })
 
@@ -194,9 +236,9 @@ function emitView() {
 }
 
 watch(() => props.places, () => renderMarkers())
-watch(() => props.selectedPlace, () => renderMarkers())
+watch(() => props.selectedPlaceId, () => updateSelection())
 
-// Le déplacement vers la position est piloté par la page (`flyTo`).
+// Le déplacement vers la position est piloté par l'écran carte (`flyTo`).
 watch(() => [props.latitude, props.longitude], () => updateUserMarker())
 
 onBeforeUnmount(() => {
@@ -205,15 +247,51 @@ onBeforeUnmount(() => {
   map = null
 })
 
-defineExpose({
-  /** `false` si la carte n'est pas encore prête. */
-  flyTo(lat: number, lng: number, zoom?: number): boolean {
+/** Zone visible hors marges, en pixels du conteneur. */
+function visibleBounds(insets: MapInsets): Leaflet.Bounds | null {
+  if (!map || !L) return null
+  const size = map.getSize()
+  return L.bounds([0, 0], [Math.max(0, size.x - insets.right), Math.max(0, size.y - insets.bottom)])
+}
+
+const api: PawspotMapApi = {
+  flyTo(lat, lng, zoom) {
     if (!map) return false
-    map.flyTo([lat, lng], zoom ?? map.getZoom(), { duration: 0.8 })
+    if (reducedMotion()) map.setView([lat, lng], zoom ?? map.getZoom(), { animate: false })
+    else map.flyTo([lat, lng], zoom ?? map.getZoom(), { duration: 0.8 })
     return true
   },
   getView: currentView,
-})
+  isVisible(lat, lng, insets) {
+    const bounds = visibleBounds(insets)
+    if (!map || !bounds) return false
+    return bounds.contains(map.latLngToContainerPoint([lat, lng]))
+  },
+  reveal(lat, lng, insets, zoom) {
+    if (!map || !L) return false
+    const animate = !reducedMotion()
+    if (zoom == null) {
+      map.panInside([lat, lng], {
+        paddingTopLeft: [24, 140],
+        paddingBottomRight: [insets.right + 24, insets.bottom + 24],
+        animate,
+      })
+      return true
+    }
+    // Centre décalé : le lieu apparaît au milieu de la zone non couverte par la fiche.
+    const point = map.project([lat, lng], zoom).add([insets.right / 2, insets.bottom / 2])
+    map.setView(map.unproject(point, zoom), zoom, { animate })
+    return true
+  },
+  focusMarker(placeId) {
+    const el = markers.get(placeId)?.marker.getElement()
+    if (!el) return false
+    el.focus({ preventScroll: true })
+    return true
+  },
+}
+
+defineExpose(api)
 </script>
 
 <template>
