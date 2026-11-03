@@ -10,6 +10,7 @@ import type { Database } from '../../../../server/database'
 import * as schema from '../../../../server/database/schema'
 import {
   ELEMENT_DEADLINE_MS,
+  OSM_MISS_TTL_MS,
   MAX_REFRESH_TILES,
   OVERPASS_CIRCUIT_PAUSE_MS,
   OverpassCircuit,
@@ -18,12 +19,16 @@ import {
   REFRESH_DEADLINE_EMPTY_MS,
   defaultOverpassCircuit,
   ensurePlace,
+  getPlaceById,
   getPlacesInBbox,
+  isRecentOsmMiss,
   recomputeDogStatus,
+  recordOsmMiss,
   resetOverpassCircuit,
 } from '../../../../server/services/places'
 import type { OverpassElement, PlacesDeps } from '../../../../server/services/places'
 import { PAWSPOT_USER_AGENT } from '../../../../server/utils/http'
+import { TERRACE_SOURCE_TEXT } from '../../../../shared/dogStatus'
 import { tileRangeForBbox, tileRangeSize } from '../../../../shared/geo'
 import type { Bbox } from '../../../../shared/geo'
 
@@ -281,7 +286,7 @@ describe('getPlacesInBbox', () => {
     expect((await placeRow('osm:way:2002'))).toMatchObject({ dogStatus: 'osm_conditional', osmDogPolicy: 'restricted', lat: 48.8796, lon: 2.3095 })
 
     const resto = result.places.find(p => p.id === 'osm:node:1004')!
-    expect(resto).toMatchObject({ name: 'Restaurant', hasName: false, dogStatus: 'likely_terrace', dogStatusSource: 'terrasse' })
+    expect(resto).toMatchObject({ name: 'Restaurant', hasName: false, dogStatus: 'likely_terrace', dogStatusSource: TERRACE_SOURCE_TEXT })
   })
 })
 
@@ -317,6 +322,192 @@ describe('ensurePlace', () => {
   it('Overpass injoignable → OverpassError', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 504 }))
     await expect(ensurePlace('osm:node:1001', deps())).rejects.toMatchObject({ name: 'OverpassError' })
+  })
+})
+
+describe('getPlacesInBbox — territoires couverts', () => {
+  /** Manhattan : hors de toute zone couverte. */
+  const NEW_YORK: Bbox = { minLon: -74.01, minLat: 40.70, maxLon: -73.98, maxLat: 40.72 }
+  /** Genève et la frontière française. */
+  const GENEVE: Bbox = { minLon: 6.10, minLat: 46.18, maxLon: 6.16, maxLat: 46.22 }
+  const MATA_UTU: Bbox = { minLon: -176.19, minLat: -13.29, maxLon: -176.16, maxLat: -13.27 }
+  const PAPEETE: Bbox = { minLon: -149.58, minLat: -17.56, maxLon: -149.54, maxLat: -17.53 }
+
+  it('emprise hors couverture (zoom 14) : aucun appel Overpass, outsideCoverage', async () => {
+    const result = await getPlacesInBbox({ bbox: NEW_YORK, zoom: 14 }, deps())
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result).toEqual({ places: [], stale: false, zoomTooLow: false, incomplete: false, truncated: false, outsideCoverage: true })
+    expect(await db.$count(schema.fetchedTiles)).toBe(0)
+  })
+
+  it('emprise hors couverture à zoom bas : aucun appel, zoomTooLow et outsideCoverage', async () => {
+    const result = await getPlacesInBbox({ bbox: NEW_YORK, zoom: 9 }, deps())
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ zoomTooLow: true, outsideCoverage: true, stale: false })
+  })
+
+  it('emprise hors couverture : les lieux déjà en base sont quand même servis', async () => {
+    await db.insert(schema.places).values({ id: 'osm:node:7001', source: 'osm', name: 'Café new-yorkais', lat: 40.71, lon: -74.0, category: 'cafe', verified: true })
+    const result = await getPlacesInBbox({ bbox: NEW_YORK, zoom: 15 }, deps())
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(ids(result.places)).toEqual(['osm:node:7001'])
+    expect(result.outsideCoverage).toBe(true)
+  })
+
+  it('emprise qui chevauche la frontière (Genève) : Overpass interrogé, pas de outsideCoverage', async () => {
+    fetchMock.mockResolvedValueOnce(overpassOk([]))
+    const result = await getPlacesInBbox({ bbox: GENEVE, zoom: 14 }, deps())
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result).not.toHaveProperty('outsideCoverage')
+  })
+
+  it.each([['Wallis (près de l\'antiméridien)', MATA_UTU], ['Papeete (Polynésie)', PAPEETE]])('%s : Overpass interrogé', async (_name, bbox) => {
+    fetchMock.mockResolvedValueOnce(overpassOk([]))
+    const result = await getPlacesInBbox({ bbox, zoom: 15 }, deps())
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.stale).toBe(false)
+    expect(result).not.toHaveProperty('outsideCoverage')
+  })
+
+  it('emprise en France : le champ outsideCoverage est absent', async () => {
+    fetchMock.mockResolvedValueOnce(overpassOk())
+    expect(await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps())).not.toHaveProperty('outsideCoverage')
+  })
+})
+
+describe('ensurePlace — ids introuvables mémorisés 24 h', () => {
+  const FLORE = ELEMENTS.find(e => e.id === 1001)!
+  /** Café à New York, hors couverture. */
+  const NY_CAFE: OverpassElement = { type: 'node', id: 7002, lat: 40.7128, lon: -74.006, tags: { amenity: 'cafe', name: 'Joe\'s', dog: 'yes' } }
+  const misses = () => db.select().from(schema.osmLookupMisses)
+
+  it('deux appels pour un id introuvable : un seul fetch', async () => {
+    fetchMock.mockResolvedValue(overpassOk([]))
+    expect(await ensurePlace('osm:node:999', deps())).toBeNull()
+    expect(await ensurePlace('osm:node:999', deps(new Date(T0.getTime() + 60_000)))).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(await misses()).toEqual([{ id: 'osm:node:999', checkedAt: T0 }])
+  })
+
+  it('juste avant 24 h : toujours pas de fetch ; après 24 h : Overpass est rappelé', async () => {
+    fetchMock.mockResolvedValue(overpassOk([]))
+    await ensurePlace('osm:node:999', deps())
+    expect(await ensurePlace('osm:node:999', deps(new Date(T0.getTime() + OSM_MISS_TTL_MS - 1000)))).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fetchMock.mockResolvedValue(overpassOk([{ ...FLORE, id: 999 }]))
+    const place = await ensurePlace('osm:node:999', deps(new Date(T0.getTime() + OSM_MISS_TTL_MS + 1000)))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(place).toMatchObject({ id: 'osm:node:999', name: 'Café de Flore' })
+  })
+
+  it('élément non éligible (bar dog=no) : mémorisé aussi', async () => {
+    fetchMock.mockResolvedValue(overpassOk([ELEMENTS.find(e => e.id === 1003)!]))
+    expect(await ensurePlace('osm:node:1003', deps())).toBeNull()
+    expect(await ensurePlace('osm:node:1003', deps())).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('élément hors couverture : ni mis en cache, ni redemandé', async () => {
+    fetchMock.mockResolvedValue(overpassOk([NY_CAFE]))
+    expect(await ensurePlace('osm:node:7002', deps())).toBeNull()
+    expect(await placeRow('osm:node:7002')).toBeUndefined()
+    expect(await isRecentOsmMiss('osm:node:7002', deps())).toBe(true)
+    expect(await ensurePlace('osm:node:7002', deps())).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('élément renvoyé pour un autre id : ignoré, l\'id demandé est mémorisé introuvable', async () => {
+    fetchMock.mockResolvedValue(overpassOk([FLORE]))
+    expect(await ensurePlace('osm:way:1001', deps())).toBeNull()
+    expect(await placeRow('osm:node:1001')).toBeUndefined()
+    expect(await isRecentOsmMiss('osm:way:1001', deps())).toBe(true)
+  })
+
+  it('échec Overpass puis succès : l\'échec n\'est pas mémorisé', async () => {
+    const noPause = deps(T0, { overpassCircuitPauseMs: 0 })
+    fetchMock.mockResolvedValue(new Response('', { status: 504 }))
+    await expect(ensurePlace('osm:node:1001', noPause)).rejects.toBeInstanceOf(OverpassError)
+    expect(await misses()).toEqual([])
+
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(overpassOk([FLORE]))
+    expect(await ensurePlace('osm:node:1001', noPause)).toMatchObject({ id: 'osm:node:1001' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('résultat partiel (runtime error) : pas mémorisé non plus', async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ elements: [], remark: 'runtime error: Query timed out' }), { status: 200 }))
+    await expect(ensurePlace('osm:node:1001', deps())).rejects.toBeInstanceOf(OverpassError)
+    expect(await misses()).toEqual([])
+  })
+
+  it('allowOverpass: false : null sans fetch pour un id absent, et rien de mémorisé', async () => {
+    expect(await ensurePlace('osm:node:1001', deps(), { allowOverpass: false })).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await misses()).toEqual([])
+  })
+
+  it('allowOverpass: false : un id présent en base est renvoyé', async () => {
+    fetchMock.mockResolvedValueOnce(overpassOk([FLORE]))
+    await ensurePlace('osm:node:1001', deps())
+    fetchMock.mockReset()
+    expect(await ensurePlace('osm:node:1001', deps(), { allowOverpass: false })).toMatchObject({ id: 'osm:node:1001', name: 'Café de Flore' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('un id présent en base est renvoyé même s\'il a été mémorisé introuvable', async () => {
+    await recordOsmMiss('osm:node:1001', deps())
+    fetchMock.mockResolvedValueOnce(overpassOk())
+    await getPlacesInBbox({ bbox: PARIS, zoom: 14 }, deps())
+    fetchMock.mockReset()
+    expect(await ensurePlace('osm:node:1001', deps())).toMatchObject({ id: 'osm:node:1001' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('recordOsmMiss purge les entrées de plus de 24 h et met à jour la date d\'un id déjà mémorisé', async () => {
+    await recordOsmMiss('osm:node:1', deps())
+    await recordOsmMiss('osm:node:2', deps(after(0.5)))
+    await recordOsmMiss('osm:node:2', deps(after(2)))
+    expect(await misses()).toEqual([{ id: 'osm:node:2', checkedAt: after(2) }])
+    expect(await isRecentOsmMiss('osm:node:1', deps(after(2)))).toBe(false)
+    expect(await isRecentOsmMiss('osm:node:2', deps(after(2)))).toBe(true)
+  })
+})
+
+describe('lecture d\'une ligne ancienne (rowToPlace)', () => {
+  it('une image http: restée en base n\'est pas renvoyée', async () => {
+    await db.insert(schema.places).values({ id: 'osm:node:8001', source: 'osm', name: 'Vieux café', lat: 48.86, lon: 2.34, category: 'cafe', verified: true, image: 'http://exemple.fr/photo.jpg' })
+    await db.insert(schema.places).values({ id: 'osm:node:8002', source: 'osm', name: 'Café récent', lat: 48.86, lon: 2.341, category: 'cafe', verified: true, image: 'https://exemple.fr/photo.jpg' })
+    const old = await getPlaceById('osm:node:8001', deps())
+    expect(old).not.toHaveProperty('image')
+    expect((await getPlaceById('osm:node:8002', deps()))?.image).toBe('https://exemple.fr/photo.jpg')
+    const { places } = await getPlacesInBbox({ bbox: PARIS, zoom: 10 }, deps())
+    expect(places.find(p => p.id === 'osm:node:8001')).not.toHaveProperty('image')
+  })
+
+  it('osmDetail figé en base (ancien texte avec syntaxe OSM) : régénéré depuis les tags', async () => {
+    await db.insert(schema.places).values({
+      id: 'osm:way:8003', source: 'osm', name: 'Parc ancien', lat: 48.86, lon: 2.34, category: 'park', verified: true,
+      tags: { 'leisure': 'park', 'dog:conditional': 'yes @ (19:00-08:00)' },
+      dogStatus: 'osm_conditional', osmDogPolicy: 'night_only',
+      dogStatusInfo: { source: 'osm', reports: { total: 0, accepted: 0, refused: 0, inside: 0, recent: 0 }, osmDetail: 'Uniquement la nuit (yes @ (19:00-08:00))' },
+    })
+    const place = await getPlaceById('osm:way:8003', deps())
+    expect(place?.dogStatusInfo.osmDetail).toBe('Chiens acceptés de 19 h à 8 h seulement')
+    expect(place?.osmDogDetail).toBe('Chiens acceptés de 19 h à 8 h seulement')
+    expect(JSON.stringify(place)).not.toContain('@')
+  })
+
+  it('osmDetail figé mais tags sans condition : le détail disparaît', async () => {
+    await db.insert(schema.places).values({
+      id: 'osm:node:8004', source: 'osm', name: 'Café', lat: 48.86, lon: 2.34, category: 'cafe', verified: true,
+      tags: { amenity: 'cafe', dog: 'yes' },
+      dogStatusInfo: { source: 'osm', reports: { total: 0, accepted: 0, refused: 0, inside: 0, recent: 0 }, osmDetail: 'yes @ ancien' },
+    })
+    const place = await getPlaceById('osm:node:8004', deps())
+    expect(place?.dogStatusInfo).not.toHaveProperty('osmDetail')
+    expect(place).not.toHaveProperty('osmDogDetail')
   })
 })
 

@@ -122,10 +122,10 @@ describe('migrations complètes avec le migrateur Drizzle', () => {
       const db = drizzle(fresh, { schema })
       await migrate(db, { migrationsFolder: MIGRATIONS })
       const tables = (await fresh.execute('SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name')).rows.map(r => r.name)
-      expect(tables).toEqual(['__drizzle_migrations', 'alerts', 'favorites', 'fetched_tiles', 'places', 'reviews', 'sessions', 'users'])
+      expect(tables).toEqual(['__drizzle_migrations', 'alerts', 'favorites', 'fetched_tiles', 'osm_lookup_misses', 'places', 'reviews', 'sessions', 'users'])
       // Une seconde exécution ne fait rien.
       await migrate(db, { migrationsFolder: MIGRATIONS })
-      expect((await fresh.execute('SELECT count(*) AS n FROM __drizzle_migrations')).rows[0]!.n).toBe(2)
+      expect((await fresh.execute('SELECT count(*) AS n FROM __drizzle_migrations')).rows[0]!.n).toBe(3)
     }
     finally {
       fresh.close()
