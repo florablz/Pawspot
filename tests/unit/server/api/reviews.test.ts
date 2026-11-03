@@ -10,7 +10,6 @@ interface Review {
   rating: number
   comment: string | null
   photos: string[]
-  userId: number
   username: string
   avatarUrl: string | null
   createdAt: string
@@ -117,17 +116,18 @@ describe('POST /api/reviews puis GET /api/reviews/:placeId', () => {
       rating: 5,
       comment: 'Très bon accueil, gamelle d\'eau',
       photos: [PHOTO],
-      userId: alice.id,
       username: 'alice',
       avatarUrl: null,
     })
     expect(typeof res.body.id).toBe('number')
+    expect(res.body).not.toHaveProperty('userId')
 
     const list = await api.request<Review[]>('GET', `/api/reviews/${encodeURIComponent(PLACE)}`)
     expect(list.status).toBe(200)
     expect(list.body.map(r => r.comment)).toEqual(['Très bon accueil, gamelle d\'eau', 'Ancien avis'])
     expect(list.body[0]).toMatchObject({ id: res.body.id, rating: 5, photos: [PHOTO], username: 'alice' })
     expect(list.body[1]).toMatchObject({ username: 'bob', photos: [] })
+    for (const review of list.body) expect(review).not.toHaveProperty('userId')
   })
 
   it('commentaire vide ou absent : enregistré à null', async () => {

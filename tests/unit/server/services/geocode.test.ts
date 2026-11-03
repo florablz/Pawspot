@@ -126,12 +126,9 @@ describe('getCachedGeocode / setCachedGeocode', () => {
     expect(await rowCount()).toBe(0)
   })
 
-  // BUG (donnees, server/services/geocode/index.ts) : la colonne `results` est en mode `json`,
-  // Drizzle fait JSON.parse dans `.get()` et lève une SyntaxError avant le `safeParse`.
-  // La doc promet `null` (« illisibles ») ; le proxy /api/geocode répondrait 500 au lieu de
-  // redemander au fournisseur. Retirer `.fails` une fois corrigé (try/catch autour de la lecture,
-  // ou colonne texte relue avec JSON.parse protégé).
-  it.fails('JSON corrompu en base → null (pas d\'exception)', async () => {
+  // Régression (corrigé par donnees, fbd2c92) : la colonne `results` est relue en texte brut
+  // puis décodée de façon protégée ; une valeur corrompue ne lève plus d'exception.
+  it('JSON corrompu en base → null (pas d\'exception)', async () => {
     await client.execute({ sql: 'INSERT INTO geocode_cache (query, results, created_at) VALUES (?, ?, ?)', args: ['paris', '{pas du json', Math.floor(T0.getTime() / 1000)] })
     expect(await getCachedGeocode('paris', deps())).toBeNull()
   })
