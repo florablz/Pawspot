@@ -81,6 +81,20 @@ describe('usePlacesSearch', () => {
 
       expect([search.stale.value, search.zoomTooLow.value, search.truncated.value]).toEqual([false, false, false])
     })
+
+    it('recopie outsideCoverage et le remet à faux quand le champ est absent de la réponse suivante', async () => {
+      fetchMock
+        .mockResolvedValueOnce(placesResponse([], { outsideCoverage: true }))
+        .mockResolvedValueOnce(placesResponse([]))
+      const search = usePlacesSearch()
+      expect(search.outsideCoverage.value).toBe(false)
+
+      await search.fetchPlaces(view('-0.20,51.48,-0.05,51.53', 14))
+      expect(search.outsideCoverage.value).toBe(true)
+
+      await search.fetchPlaces(PARIS)
+      expect(search.outsideCoverage.value).toBe(false)
+    })
   })
 
   describe('requêtes concurrentes', () => {

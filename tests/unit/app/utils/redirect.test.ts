@@ -32,11 +32,9 @@ describe('safeRedirect', () => {
     expect(safeRedirect(value)).toBe('/')
   })
 
-  // BUG (front, app/utils/redirect.ts) : la comparaison avec AUTH_PATHS est exacte, alors que
   // vue-router (strict: false, sensitive: false) sert aussi /login/ et /LOGIN par la page de
-  // connexion. `?redirect=/login/` renvoie donc, après connexion, vers le formulaire de connexion.
-  // Sans risque de sécurité (chemin interne), mais boucle visible. Retirer `.fails` une fois corrigé.
-  it.fails.each(['/login/', '/LOGIN', '/Register?x=1'])('variante de page d\'authentification %s → /', (value) => {
+  // connexion : ces variantes ne doivent pas renvoyer vers le formulaire après connexion.
+  it.each(['/login/', '/LOGIN', '/Register?x=1'])('variante de page d\'authentification %s → /', (value) => {
     expect(safeRedirect(value)).toBe('/')
   })
 
