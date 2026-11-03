@@ -104,14 +104,24 @@ export function useMapScreen(mapRef: Ref<PawspotMapApi | null>) {
     }
   }
 
+  /**
+   * Ordre : URL > lieu ouvert > dernière vue de la session > géolocalisation.
+   * La carte démarre déjà sur `startView` (pas de passage par la France entière) ;
+   * un lieu ouvert sans vue dans l'URL (`/lieu/<id>` après « Mes favoris ») est
+   * ensuite montré, même si une vue de session existe.
+   */
   function onMapReady() {
     const sel = sheet.selected.value
-    if (startView) {
+    if (urlView) {
       settled.value = true
       locateMe(false)
     }
     else if (sel) {
       revealPlace(sel)
+      settled.value = true
+      locateMe(false)
+    }
+    else if (startView) {
       settled.value = true
       locateMe(false)
     }
