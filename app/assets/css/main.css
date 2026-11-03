@@ -117,14 +117,15 @@
   color: #FF9100 !important;
 }
 
+/* Attribution des tuiles : toujours lisible (AA) sur tuile claire ou sombre. */
 .leaflet-control-attribution {
-  background: rgba(44, 24, 16, 0.5) !important;
-  color: #8D6E63 !important;
+  background: rgba(44, 24, 16, 0.85) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
   font-size: 10px !important;
 }
 
 .leaflet-control-attribution a {
-  color: #A1887F !important;
+  color: #FF9E40 !important;
 }
 
 /* OSM color overlay: warm tint matching app brown/orange tones, greens stay earthy */
@@ -137,4 +138,36 @@
 /* Contrôles de zoom sous la barre de recherche et les filtres */
 .leaflet-top.leaflet-left {
   top: 132px;
+}
+
+/* Bulles de regroupement (leaflet.markercluster) : disque marron, anneau orange,
+   nombre en blanc (contraste 17:1). Taille ≥ 44 px fixée par `clusterIcon`. */
+.paw-cluster {
+  background: transparent;
+  border: 0;
+}
+
+.paw-cluster__disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #2C1810;
+  color: #FFFFFF;
+  border: 3px solid #FF6D00;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 8px rgba(0, 0, 0, 0.45);
+  font: 700 14px/1 system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.paw-cluster:hover .paw-cluster__disc {
+  background: #4E342E;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-cluster-anim .leaflet-marker-icon,
+  .leaflet-cluster-anim .leaflet-marker-shadow {
+    transition: none !important;
+  }
 }
