@@ -110,7 +110,7 @@ onMounted(() => {
   >
     <section class="relative h-[100dvh] w-full shrink-0 snap-start" aria-label="Carte">
       <!-- Contrôles avant la carte dans l'ordre du DOM : la tabulation les atteint en premier. -->
-      <div class="pointer-events-none absolute inset-x-0 top-0 z-[1000] p-3">
+      <div class="pointer-events-none absolute inset-x-0 top-0 z-[1001] p-3">
         <SearchTopBar
           v-model:query="searchQuery"
           :localized="localized"
