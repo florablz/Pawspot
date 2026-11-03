@@ -50,7 +50,7 @@ export const places = sqliteTable('places', {
   /** Déjà passé par `sanitizeWebsite`. */
   website: text('website'),
   openingHours: text('opening_hours'),
-  /** Déjà passé par `resolveImage` (http(s) uniquement). */
+  /** Déjà passé par `resolveImage` (`https:` uniquement ; refiltré par `rowToPlace`). */
   image: text('image'),
   cuisine: text('cuisine'),
   description: text('description'),

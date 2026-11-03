@@ -44,7 +44,7 @@ export interface Place {
   website?: string
   /** Valeur brute `opening_hours` d'OSM. */
   openingHours?: string
-  /** URL http(s) d'une image (OSM `image` / `wikimedia_commons`). */
+  /** URL `https:` d'une image (OSM `image` / `wikimedia_commons`), passée par `sanitizeImageUrl`. */
   image?: string
   cuisine?: string
   description?: string
