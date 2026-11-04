@@ -125,7 +125,7 @@ describe('migrations complètes avec le migrateur Drizzle', () => {
       expect(tables).toEqual(['__drizzle_migrations', 'alerts', 'favorites', 'fetched_tiles', 'geocode_cache', 'osm_lookup_misses', 'places', 'reviews', 'sessions', 'users'])
       // Une seconde exécution ne fait rien.
       await migrate(db, { migrationsFolder: MIGRATIONS })
-      expect((await fresh.execute('SELECT count(*) AS n FROM __drizzle_migrations')).rows[0]!.n).toBe(4)
+      expect((await fresh.execute('SELECT count(*) AS n FROM __drizzle_migrations')).rows[0]!.n).toBe(5)
     }
     finally {
       fresh.close()

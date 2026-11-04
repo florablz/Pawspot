@@ -82,13 +82,22 @@ describe('GET /api/geocode : Nominatim et cache', () => {
     expect(url).toBe(nominatimSearchUrl('Lyon'))
     expect(new Headers(init!.headers).get('user-agent')).toBe(PAWSPOT_USER_AGENT)
 
-    for (const q of ['lyon', 'LYON', '  Lyon  ', 'Lyon!']) {
+    for (const q of ['lyon', 'LYON', '  Lyon  ']) {
       const hit = await geocode(q)
       expect(hit.status, q).toBe(200)
       expect(hit.body, q).toEqual({ results: LYON_RESULTS })
       expect(hit.headers.get('cache-control'), q).toBe('public, max-age=3600')
     }
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('« Lyon! » n\'est pas servi sous « lyon » (clé = requête normalisée, ponctuation gardée)', async () => {
+    fetchMock.mockResolvedValueOnce(json(lyonFixture)).mockResolvedValueOnce(json([]))
+    await geocode('Lyon')
+    vi.useFakeTimers({ now: Date.now() + 2_000, toFake: ['Date'] })
+    expect((await geocode('Lyon!')).body).toEqual({ results: [] })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(await cacheRows()).toBe(2)
   })
 
   it('« aucun résultat » est mis en cache aussi', async () => {
