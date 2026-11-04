@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { CATEGORY_LIST } from '#shared/categories'
+import { CATEGORIES, CATEGORY_LIST } from '#shared/categories'
 import type { CategoryKey } from '#shared/categories'
 import CategoryFilters from '~/components/search/CategoryFilters.vue'
 
@@ -30,12 +30,21 @@ function mountFilters(props: { categories?: CategoryKey[], confirmedOnly?: boole
 const confirmedChip = (wrapper: ReturnType<typeof mountFilters>) => wrapper.get('[data-testid="filter-confirmed"]')
 
 describe('CategoryFilters', () => {
-  it('groupe nommé « Filtres » : une puce par catégorie puis « Confirmés » en dernier', () => {
+  it('groupe nommé « Filtres » : « Confirmés » en tête, puis une puce par catégorie', () => {
     const wrapper = mountFilters()
     expect(wrapper.get('[role="group"]').attributes('aria-label')).toBe('Filtres')
     const buttons = wrapper.get('[role="group"]').findAll('button')
     expect(buttons).toHaveLength(CATEGORY_LIST.length + 1)
-    expect(buttons.at(-1)!.attributes('data-testid')).toBe('filter-confirmed')
+    expect(buttons[0]!.attributes('data-testid')).toBe('filter-confirmed')
+  })
+
+  it('catégories les plus cherchées d\'abord (visibles sans défiler à 375 px), puis les autres', () => {
+    const labels = mountFilters().get('[role="group"]').findAll('button').slice(1).map(b => b.text())
+    const first = ['restaurant', 'cafe', 'bar', 'park', 'dog_park', 'beach', 'vet'] as const
+    const expected = first.map(k => CATEGORIES[k]).filter(Boolean).map(c => `${c.icon}${c.label}`)
+    expect(labels.slice(0, expected.length)).toEqual(expected)
+    // Chaque catégorie une seule fois.
+    expect(new Set(labels).size).toBe(CATEGORY_LIST.length)
   })
 
   describe('puce « ✅ Confirmés »', () => {
