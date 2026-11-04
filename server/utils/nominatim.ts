@@ -1,21 +1,16 @@
 /**
- * Client Nominatim pour le proxy `GET /api/geocode?q=` (§3.2, §4.3) : file
- * d'attente « 1 requête par seconde », délai maximal, User-Agent identifiable,
- * conversion des réponses en `GeocodeResult` (France, DROM et COM uniquement).
+ * Client Nominatim pour le proxy `GET /api/geocode?q=` (§3.2, §4.3), choisi par
+ * `GEOCODER=nominatim` (voir server/utils/geocoder.ts ; Photon par défaut) :
+ * conversion des réponses jsonv2 en `GeocodeResult` (France, DROM et COM uniquement).
+ * File d'attente, délai, User-Agent et dédoublonnage : server/utils/geocoding/core.ts.
  *
  * Politique d'usage de Nominatim (https://operations.osmfoundation.org/policies/nominatim/) :
- * - au plus 1 requête par seconde pour toute l'application : espacement global
- *   ci-dessous, plus le cache en base (`server/services/geocode`, 30 jours) ;
- * - User-Agent identifiant l'application (`PAWSPOT_USER_AGENT`). Côté serveur il n'y
- *   a pas de page d'origine : on n'envoie pas de `Referer`, ni de paramètre `email`
- *   (pas d'adresse personnelle ; le UA pointe vers le dépôt) ;
- * - pas de recherche « au fil de la frappe » sans cache : le front doit attendre
- *   la fin de saisie (debounce) et le serveur dédoublonne les requêtes identiques
- *   en cours.
- *
- * L'espacement est en mémoire du processus : en hébergement serverless, chaque
- * instance a sa propre file, c'est donc un meilleur effort. La limitation de débit
- * par client stockée en base (Phase 3, §4.5) complétera ce garde-fou.
+ * - au plus 1 requête par seconde : espacement global, plus le cache en base ;
+ * - User-Agent identifiant l'application (`PAWSPOT_USER_AGENT`), sans `Referer`
+ *   ni paramètre `email` ;
+ * - PAS d'autocomplétion sur l'instance publique de l'OSMF : c'est pourquoi Photon
+ *   est le fournisseur par défaut. N'utiliser `GEOCODER=nominatim` qu'avec une
+ *   instance qui l'autorise (`NOMINATIM_URL`).
  *
  * `fetch` et l'horloge sont injectables (les tests n'appellent jamais Nominatim).
  */
@@ -25,7 +20,34 @@ import { isInCoverage, isValidBbox } from '../../shared/geo'
 import type { Bbox } from '../../shared/geo'
 import { normalizeName } from '../../shared/text'
 import type { GeocodeResult, GeocodeResultType } from '../../shared/types'
-import { PAWSPOT_USER_AGENT } from './http'
+import {
+  GEOCODER_BACKOFF_MAX_MS,
+  GEOCODER_BACKOFF_MS,
+  GEOCODER_MAX_QUEUE_WAIT_MS,
+  GEOCODER_MAX_RESULTS,
+  GEOCODER_MIN_INTERVAL_MS,
+  GEOCODER_TIMEOUT_MS,
+  GEOCODE_COUNTRY_CODES,
+  GeocodeServiceError,
+  LABEL_MAX_LENGTH,
+  dedupeInFlight,
+  departmentCodeFromPostcode,
+  fetchGeocoderJson,
+  joinParts,
+  parseGeocoderBaseUrl,
+  postcodeCity,
+  resetGeocoderQueue,
+  uniqueResults,
+  waitForGeocoderSlot,
+} from './geocoding/core'
+import type { GeocoderDeps } from './geocoding/core'
+
+/**
+ * Ré-export de compatibilité pour les imports existants depuis ce fichier. À
+ * retirer quand plus rien n'importe `GeocodeServiceError` d'ici (source :
+ * server/utils/geocoding/core.ts).
+ */
+export { GeocodeServiceError }
 
 /** Adresse de base par défaut (instance publique de l'OSMF). */
 export const NOMINATIM_DEFAULT_BASE_URL = 'https://nominatim.openstreetmap.org'
@@ -38,17 +60,7 @@ export const NOMINATIM_SEARCH_URL = `${NOMINATIM_DEFAULT_BASE_URL}/search`
  * Valeur absente, vide ou invalide : `NOMINATIM_DEFAULT_BASE_URL`.
  */
 export function parseNominatimBaseUrl(raw: string | undefined | null): string {
-  const value = raw?.trim()
-  if (!value) return NOMINATIM_DEFAULT_BASE_URL
-  try {
-    const url = new URL(value)
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return NOMINATIM_DEFAULT_BASE_URL
-    if (url.username || url.password || url.search || url.hash) return NOMINATIM_DEFAULT_BASE_URL
-    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
-  }
-  catch {
-    return NOMINATIM_DEFAULT_BASE_URL
-  }
+  return parseGeocoderBaseUrl(raw, NOMINATIM_DEFAULT_BASE_URL)
 }
 
 /**
@@ -59,99 +71,27 @@ export function configuredNominatimSearchUrl(env: Record<string, string | undefi
   return `${parseNominatimBaseUrl(env.NOMINATIM_URL)}/search`
 }
 
-/**
- * Codes pays ISO 3166-1 acceptés par Nominatim (`countrycodes`) : France
- * métropolitaine et Corse (`fr`), DROM (Guadeloupe `gp`, Martinique `mq`,
- * Guyane `gf`, La Réunion `re`, Mayotte `yt`) et COM (Saint-Pierre-et-Miquelon `pm`,
- * Saint-Barthélemy `bl`, Saint-Martin `mf`, Polynésie française `pf`,
- * Nouvelle-Calédonie `nc`, Wallis-et-Futuna `wf`). Mêmes territoires que
- * `COVERAGE_AREAS` (shared/geo.ts) : ni TAAF (`tf`) ni Clipperton.
- */
-export const NOMINATIM_COUNTRY_CODES = ['fr', 'gp', 'mq', 'gf', 're', 'yt', 'pm', 'bl', 'mf', 'pf', 'nc', 'wf'] as const
+/** Codes pays passés à Nominatim (`countrycodes`) : voir `GEOCODE_COUNTRY_CODES`. */
+export const NOMINATIM_COUNTRY_CODES = GEOCODE_COUNTRY_CODES
 
 /** Résultats demandés à Nominatim (le cache en garde au plus 10). */
-export const NOMINATIM_LIMIT = 8
+export const NOMINATIM_LIMIT = GEOCODER_MAX_RESULTS
 /** Délai maximal d'un appel (réponse et lecture du JSON comprises). */
-export const NOMINATIM_TIMEOUT_MS = 8_000
+export const NOMINATIM_TIMEOUT_MS = GEOCODER_TIMEOUT_MS
 /** Espacement minimal entre deux appels (politique : 1 requête/s). */
-export const NOMINATIM_MIN_INTERVAL_MS = 1_000
-/**
- * Attente maximale dans la file : au-delà (≈ 3 requêtes déjà en attente), on
- * répond 503 tout de suite plutôt que de faire patienter le client.
- */
-export const NOMINATIM_MAX_QUEUE_WAIT_MS = 3_000
+export const NOMINATIM_MIN_INTERVAL_MS = GEOCODER_MIN_INTERVAL_MS
+/** Attente maximale dans la file avant un 503 immédiat. */
+export const NOMINATIM_MAX_QUEUE_WAIT_MS = GEOCODER_MAX_QUEUE_WAIT_MS
 /** Pause après un 429 / 503 de Nominatim, si `Retry-After` est absent. */
-export const NOMINATIM_BACKOFF_MS = 30_000
+export const NOMINATIM_BACKOFF_MS = GEOCODER_BACKOFF_MS
 /** Pause maximale acceptée depuis un `Retry-After`. */
-export const NOMINATIM_BACKOFF_MAX_MS = 10 * 60 * 1000
+export const NOMINATIM_BACKOFF_MAX_MS = GEOCODER_BACKOFF_MAX_MS
 
-const LABEL_MAX_LENGTH = 200
+export type NominatimDeps = GeocoderDeps
 
-/** Message de l'erreur 503 renvoyée par `GET /api/geocode` (vouvoiement, sans détail interne). */
-export const GEOCODE_UNAVAILABLE_MESSAGE = 'Le service de recherche d\'adresses est momentanément indisponible, réessayez dans quelques instants.'
-
-/** Nominatim injoignable, en erreur, trop lent, réponse illisible, ou file pleine. */
-export class GeocodeServiceError extends Error {
-  constructor(message: string, readonly reason: 'queue' | 'timeout' | 'http' | 'network' | 'invalid') {
-    super(message)
-    this.name = 'GeocodeServiceError'
-  }
-}
-
-// ---------------------------------------------------------------------------
-// File d'attente globale (meilleur effort, par processus)
-// ---------------------------------------------------------------------------
-
-export interface NominatimDeps {
-  fetch?: typeof fetch
-  now?: () => number
-  sleep?: (ms: number) => Promise<void>
-  /** Remplace l'adresse de recherche (défaut : `configuredNominatimSearchUrl()`). */
-  endpoint?: string
-  timeoutMs?: number
-}
-
-/** Prochain instant (ms) où un appel peut partir. */
-let nextSlotAt = 0
-/** Requêtes identiques en cours (clé = requête normalisée) : un seul appel pour toutes. */
-const inFlight = new Map<string, Promise<GeocodeResult[]>>()
-
-/** Remet la file à zéro (tests). */
+/** Remet la file commune des géocodeurs à zéro (tests). */
 export function resetNominatimQueue(): void {
-  nextSlotAt = 0
-  inFlight.clear()
-}
-
-const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
-
-/**
- * Réserve le prochain créneau et attend son heure. La réservation est synchrone
- * (pas de `await` entre la lecture et l'écriture de `nextSlotAt`) : deux requêtes
- * simultanées obtiennent deux créneaux espacés d'une seconde.
- * @throws GeocodeServiceError (`queue`) si l'attente dépasserait `NOMINATIM_MAX_QUEUE_WAIT_MS`.
- */
-async function waitForSlot(deps: NominatimDeps): Promise<void> {
-  const now = deps.now?.() ?? Date.now()
-  const slot = Math.max(now, nextSlotAt)
-  const wait = slot - now
-  if (wait > NOMINATIM_MAX_QUEUE_WAIT_MS) throw new GeocodeServiceError('File Nominatim pleine', 'queue')
-  nextSlotAt = slot + NOMINATIM_MIN_INTERVAL_MS
-  if (wait > 0) await (deps.sleep ?? defaultSleep)(wait)
-}
-
-/** Repousse le prochain créneau (Nominatim a demandé de ralentir). */
-function backOff(ms: number, deps: NominatimDeps): void {
-  const now = deps.now?.() ?? Date.now()
-  nextSlotAt = Math.max(nextSlotAt, now + Math.min(ms, NOMINATIM_BACKOFF_MAX_MS))
-}
-
-/** En-tête `Retry-After` (secondes ou date HTTP) en millisecondes ; `undefined` si absent ou illisible. */
-export function parseRetryAfter(value: string | null, now: number): number | undefined {
-  if (!value) return undefined
-  const trimmed = value.trim()
-  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000
-  const date = Date.parse(trimmed)
-  return Number.isFinite(date) ? Math.max(0, date - now) : undefined
+  resetGeocoderQueue()
 }
 
 // ---------------------------------------------------------------------------
@@ -232,21 +172,7 @@ export function departmentCode(address: Record<string, unknown> | undefined, pos
   const lvl4 = addressField(address, 'ISO3166-2-lvl4')
   const fromLvl4 = lvl4?.match(/^FR-(97\d)$/i)?.[1]
   if (fromLvl4) return fromLvl4
-  if (postcode && /^\d{5}$/.test(postcode)) {
-    if (postcode.startsWith('97') || postcode.startsWith('98')) return postcode.slice(0, 3)
-    if (!postcode.startsWith('20')) return postcode.slice(0, 2)
-  }
-  return undefined
-}
-
-function joinParts(...parts: (string | undefined)[]): string {
-  return parts.filter((p): p is string => !!p && !!p.trim()).join(', ')
-}
-
-/** « 75004 Paris », « Paris » ou `undefined`. */
-function postcodeCity(postcode: string | undefined, city: string | undefined): string | undefined {
-  const value = [postcode, city].filter(Boolean).join(' ')
-  return value || undefined
+  return departmentCodeFromPostcode(postcode)
 }
 
 /** Repli : les trois premiers morceaux de `display_name`, sans le pays ni doublon. */
@@ -340,18 +266,7 @@ export function toGeocodeResult(raw: unknown): GeocodeResult | null {
  * libellé normalisé : par ex. la commune en relation et en nœud), au plus `NOMINATIM_LIMIT`.
  */
 export function toGeocodeResults(items: readonly unknown[]): GeocodeResult[] {
-  const seen = new Set<string>()
-  const results: GeocodeResult[] = []
-  for (const raw of items) {
-    const result = toGeocodeResult(raw)
-    if (!result) continue
-    const key = normalizeName(result.label)
-    if (seen.has(key)) continue
-    seen.add(key)
-    results.push(result)
-    if (results.length === NOMINATIM_LIMIT) break
-  }
-  return results
+  return uniqueResults(items.map(toGeocodeResult), NOMINATIM_LIMIT)
 }
 
 // ---------------------------------------------------------------------------
@@ -371,65 +286,20 @@ export function nominatimSearchUrl(query: string, endpoint = configuredNominatim
   return url.href
 }
 
-/** `fetch` + lecture du JSON, bornés à `ms` (signal + course avec un minuteur). */
-async function fetchJson(doFetch: typeof fetch, url: string, ms: number, deps: NominatimDeps): Promise<unknown> {
-  const controller = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      controller.abort()
-      reject(new GeocodeServiceError('Délai Nominatim dépassé', 'timeout'))
-    }, ms)
-  })
-  const run = async () => {
-    let response: Response
-    try {
-      response = await doFetch(url, {
-        headers: { 'User-Agent': PAWSPOT_USER_AGENT, 'Accept': 'application/json' },
-        signal: controller.signal,
-      })
-    }
-    catch {
-      throw new GeocodeServiceError('Nominatim injoignable', 'network')
-    }
-    if (response.status === 429 || response.status === 503) {
-      const now = deps.now?.() ?? Date.now()
-      backOff(parseRetryAfter(response.headers.get('retry-after'), now) ?? NOMINATIM_BACKOFF_MS, deps)
-    }
-    if (!response.ok) throw new GeocodeServiceError(`Nominatim HTTP ${response.status}`, 'http')
-    try {
-      return await response.json() as unknown
-    }
-    catch {
-      throw new GeocodeServiceError('Réponse Nominatim illisible', 'invalid')
-    }
-  }
-  try {
-    return await Promise.race([run(), timeout])
-  }
-  finally {
-    clearTimeout(timer)
-  }
-}
-
 async function searchNow(query: string, deps: NominatimDeps): Promise<GeocodeResult[]> {
-  await waitForSlot(deps)
-  const data = await fetchJson(deps.fetch ?? globalThis.fetch, nominatimSearchUrl(query, deps.endpoint), deps.timeoutMs ?? NOMINATIM_TIMEOUT_MS, deps)
+  await waitForGeocoderSlot(deps)
+  const data = await fetchGeocoderJson('Nominatim', nominatimSearchUrl(query, deps.endpoint), deps)
   const parsed = nominatimResponseSchema.safeParse(data)
   if (!parsed.success) throw new GeocodeServiceError('Réponse Nominatim inattendue', 'invalid')
   return toGeocodeResults(parsed.data)
 }
 
 /**
- * Recherche Nominatim (sans cache : voir la route). Les requêtes identiques
- * (même requête normalisée) en cours partagent le même appel.
+ * Recherche Nominatim (sans cache : voir la route). La requête envoyée est
+ * `normalizeGeocodeQuery(query)` ; les requêtes identiques en cours (même forme
+ * normalisée) partagent le même appel.
  * @throws GeocodeServiceError si la file est pleine ou si Nominatim échoue.
  */
 export function searchNominatim(query: string, deps: NominatimDeps = {}): Promise<GeocodeResult[]> {
-  const key = normalizeName(query)
-  const pending = inFlight.get(key)
-  if (pending) return pending
-  const promise = searchNow(query, deps).finally(() => inFlight.delete(key))
-  inFlight.set(key, promise)
-  return promise
+  return dedupeInFlight('nominatim', query, normalized => searchNow(normalized, deps))
 }
