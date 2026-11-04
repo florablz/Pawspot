@@ -24,6 +24,12 @@ watch(() => !!s.locationMessage.value, (shown) => {
   if (!active || active === document.body) focusSearch()
 })
 
+/** Lien d'évitement : premier marqueur visible, sinon la carte elle-même (déplacement aux flèches). */
+function skipToMap() {
+  if (mapRef.value?.focusFirstMarker()) return
+  document.querySelector<HTMLElement>('#carte-lieux .leaflet-container')?.focus({ preventScroll: true })
+}
+
 const sheetOpen = computed(() => !!selected.value)
 /** Sur desktop, les barres se décalent à gauche du panneau latéral. */
 const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
@@ -44,6 +50,7 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
           @locate="s.locateMe()"
           @select-place="open"
           @select-address="s.goToResult"
+          @skip-to-map="skipToMap"
         />
       </div>
 
@@ -51,6 +58,7 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
         <SearchCategoryFilters
           v-model:categories="s.categories.value"
           v-model:confirmed-only="s.confirmedOnly.value"
+          data-map-overlay
           class="pointer-events-auto mx-auto max-w-2xl"
         />
       </div>
@@ -58,7 +66,7 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
       <MapSearchHereButton :show="s.showSearchHere.value" :class="besidePanel" @search="s.searchHere" />
 
       <!-- Conteneur dimensionné dès le SSR ; `isolate` garde les contrôles Leaflet sous les barres. -->
-      <div class="absolute inset-0 isolate">
+      <div id="carte-lieux" class="absolute inset-0 isolate" tabindex="-1">
         <MapPawspotMap
           ref="mapRef"
           :latitude="s.latitude.value"
@@ -88,6 +96,7 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
       >
         <MapStatusBar
           class="w-full"
+          data-map-overlay
           :count="s.filteredPlaces.value.length"
           :loaded-count="s.places.value.length"
           :loaded="!!s.loadedView.value"

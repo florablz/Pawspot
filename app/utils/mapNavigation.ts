@@ -8,7 +8,7 @@ import type { MapInsets, MapView, PawspotMapApi } from '~/types/map'
 export function createMapNavigation(
   getMap: () => Leaflet.Map | null,
   getLib: () => typeof Leaflet | null,
-): Omit<PawspotMapApi, 'focusMarker'> {
+): Omit<PawspotMapApi, 'focusMarker' | 'focusFirstMarker'> {
   const reducedMotion = () => matchesMedia(REDUCED_MOTION_QUERY)
 
   function getView(): MapView | null {

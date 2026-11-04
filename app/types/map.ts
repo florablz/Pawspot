@@ -55,4 +55,6 @@ export interface PawspotMapApi {
   showArea: (area: MapArea, insets: MapInsets) => boolean
   /** Rend le focus clavier au marqueur d'un lieu (fermeture de la fiche). */
   focusMarker: (placeId: string) => boolean
+  /** Focus sur le premier marqueur ou la première bulle visible (lien d'évitement) ; faux s'il n'y en a pas. */
+  focusFirstMarker: () => boolean
 }

@@ -90,6 +90,7 @@ const iconBtn = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-ful
     :class="[dragging ? '' : 'motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-out', snap === 'peek' ? 'max-lg:touch-none' : '']"
     :style="{ '--sheet-y': sheetY }"
     data-testid="place-sheet"
+    data-map-overlay
     :data-snap="snap"
     @keydown="onKeydown"
     @pointerdown="snap === 'peek' ? onPointerDown($event) : undefined"

@@ -16,6 +16,7 @@ defineEmits<{ search: [] }>()
     <div v-if="show" class="pointer-events-none absolute inset-x-0 top-[132px] z-[1000] flex justify-center">
       <button
         type="button"
+        data-map-overlay
         class="pointer-events-auto glass-strong flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-medium text-white shadow-lg transition hover:bg-paw-brown-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paw-orange-300 active:scale-95"
         @click="$emit('search')"
       >

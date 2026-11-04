@@ -2,6 +2,7 @@
 import type * as Leaflet from 'leaflet'
 import type { Place } from '#shared/types'
 import type { MapStartView, MapView, PawspotMapApi } from '~/types/map'
+import type { MapKeyboard } from '~/utils/mapKeyboard'
 
 const props = defineProps<{
   /** Position de l'utilisateur (repère orange), ou `null`. */
@@ -45,6 +46,7 @@ let renderedSelectedId: string | null = null
 let userMarker: Leaflet.Marker | null = null
 let L: typeof Leaflet | null = null
 let resizeObserver: ResizeObserver | null = null
+let keyboard: MapKeyboard | null = null
 let stopWatchingMoves: (() => void) | null = null
 const navigation = createMapNavigation(() => map, () => L)
 
@@ -94,6 +96,7 @@ function setSelected(id: string, selected: boolean) {
   if (selected) selectedLayer.addLayer(marker)
   else clusterLayer.addLayer(marker)
   labelMarker(marker, place)
+  keyboard?.refresh()
 }
 
 const renderMarkers = () => {
@@ -117,6 +120,7 @@ const renderMarkers = () => {
   // si les lieux changent entre-temps).
   clusterLayer.addLayers(grouped)
   renderedSelectedId = selectedId
+  keyboard?.refresh()
   performance.measure(MARKERS_MEASURE, `${MARKERS_MEASURE}:start`)
 }
 
@@ -195,6 +199,7 @@ onMounted(async () => {
 
   leafletMap.on('moveend', emitView)
   stopWatchingMoves = watchUserMoves(leafletMap, mapEl.value, clusterLayer, () => emit('user-move'))
+  keyboard = setupMapKeyboard({ map: leafletMap, container: mapEl.value, clusterLayer })
 
   // Recalcule la taille de la carte quand la mise en page change.
   resizeObserver = new ResizeObserver(() => map?.invalidateSize())
@@ -220,6 +225,8 @@ watch(() => [props.latitude, props.longitude], () => updateUserMarker())
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   stopWatchingMoves?.()
+  keyboard?.dispose()
+  keyboard = null
   map?.remove()
   map = null
   clusterLayer = null
@@ -237,6 +244,9 @@ const api: PawspotMapApi = {
     if (!el) return false
     el.focus({ preventScroll: true })
     return true
+  },
+  focusFirstMarker() {
+    return keyboard?.focusFirst() ?? false
   },
 }
 
