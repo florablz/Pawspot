@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [4.8320114, 45.7578137] },
+      "properties": {
+        "osm_type": "R", "osm_id": 120965, "osm_key": "place", "osm_value": "city", "type": "city",
+        "name": "Lyon", "postcode": "69001;69002;69003;69004;69005;69006;69007;69008;69009",
+        "county": "Métropole de Lyon", "state": "Auvergne-Rhône-Alpes", "country": "France", "countrycode": "FR",
+        "extent": [4.7718134, 45.8082628, 4.8983774, 45.7073666]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.3743773, 48.8443038] },
+      "properties": {
+        "osm_type": "W", "osm_id": 37022009, "osm_key": "railway", "osm_value": "station", "type": "house",
+        "name": "Gare de Lyon", "street": "Place Louis-Armand", "postcode": "75012", "city": "Paris",
+        "district": "Quartier des Quinze-Vingts", "county": "Paris", "state": "Île-de-France",
+        "country": "France", "countrycode": "FR"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-73.95, 40.65] },
+      "properties": { "osm_key": "place", "osm_value": "hamlet", "type": "other", "name": "Lyon", "country": "United States", "countrycode": "US" }
+    }
+  ]
+}

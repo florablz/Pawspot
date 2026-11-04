@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-4.4860088, 48.3905283] },
+      "properties": {
+        "osm_type": "R", "osm_id": 1076124, "osm_key": "place", "osm_value": "city", "type": "city",
+        "name": "Brest", "postcode": "29200", "county": "Finistère", "state": "Bretagne",
+        "country": "France", "countrycode": "FR",
+        "extent": [-4.5689423, 48.4597506, -4.4277924, 48.3586206]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [23.6857, 52.0976] },
+      "properties": { "osm_key": "place", "osm_value": "city", "type": "city", "name": "Brest", "country": "Belarus", "countrycode": "BY" }
+    }
+  ]
+}

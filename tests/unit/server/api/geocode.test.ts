@@ -17,7 +17,7 @@ interface ApiErrorBody { statusCode: number; message: string }
 
 const UNAVAILABLE = 'Le service de recherche d\'adresses est momentanément indisponible, réessayez dans quelques instants.'
 const LYON_URL = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&accept-language=fr'
-  + '&countrycodes=fr%2Cgp%2Cmq%2Cgf%2Cre%2Cyt%2Cpm%2Cbl%2Cmf%2Cpf%2Cnc%2Cwf&q=Lyon'
+  + '&countrycodes=fr%2Cgp%2Cmq%2Cgf%2Cre%2Cyt%2Cpm%2Cbl%2Cmf%2Cpf%2Cnc%2Cwf&q=lyon'
 
 let api: ApiBench
 const geocode = <T = GeocodeResponse>(q?: string) =>
@@ -30,12 +30,15 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  // Ce fichier teste le fournisseur Nominatim (Photon est le défaut : voir photon.test.ts).
+  vi.stubEnv('GEOCODER', 'nominatim')
   fetchMock.mockReset()
   await api.db.run(sql`DELETE FROM geocode_cache`)
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -79,7 +82,8 @@ describe('GET /api/geocode : Nominatim et cache', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe(LYON_URL)
-    expect(url).toBe(nominatimSearchUrl('Lyon'))
+    // Requête normalisée envoyée (= clé du cache).
+    expect(url).toBe(nominatimSearchUrl('lyon'))
     expect(new Headers(init!.headers).get('user-agent')).toBe(PAWSPOT_USER_AGENT)
 
     for (const q of ['lyon', 'LYON', '  Lyon  ']) {
