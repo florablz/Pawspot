@@ -91,9 +91,9 @@ describe('SearchBox', () => {
       expect(listbox.attributes('aria-label')).toBe('Suggestions de recherche')
     })
 
-    it('ouvert : deux groupes étiquetés (lieux puis adresses), options non sélectionnées', async () => {
+    it('ouvert, saisie partielle : deux groupes étiquetés (lieux puis adresses), options non sélectionnées', async () => {
       const w = mountBox()
-      await type(w, 'Lyon')
+      await type(w, 'Lyo')
       expect(expanded(w)).toBe('true')
 
       const groups = w.findAll('[role="group"]')
@@ -176,10 +176,49 @@ describe('SearchBox', () => {
     })
   })
 
+  describe('nom exact d\'une ville (2a0168f)', () => {
+    it('« Lyon » : adresses et villes d\'abord, puis les lieux PawSpot', async () => {
+      const w = mountBox()
+      await type(w, 'Lyon')
+      const groups = w.findAll('[role="group"]')
+      const labels = groups.map(g => w.get(`[id="${g.attributes('aria-labelledby')}"]`).text())
+      expect(labels).toEqual(['Adresses et villes', 'Lieux PawSpot'])
+      expect(optionTexts(w)[0]).toContain('Ville · Métropole de Lyon, Rhône')
+      expect(optionTexts(w)[2]).toContain('Lyon Café')
+      // Identifiants uniques et dans l'ordre affiché (aria-activedescendant cohérent).
+      expect(new Set(options(w).map(o => o.attributes('id'))).size).toBe(4)
+      await key(w, 'ArrowDown')
+      expect(input(w).attributes('aria-activedescendant')).toBe(options(w)[0]!.attributes('id'))
+      expect(options(w)[0]!.attributes('aria-selected')).toBe('true')
+    })
+
+    it('Entrée sans option active : la ville passe avant un lieu au nom identique ; titre seul dans le champ', async () => {
+      const lyonPlace = makePlace({ id: 'osm:node:4', name: 'Lyon', category: 'bar' })
+      const w = mountBox([...PLACES, lyonPlace])
+      await type(w, 'lyon')
+      await key(w, 'Enter')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(w.emitted('select-address')).toEqual([[GEOCODE_LYON.results[0]]])
+      expect(w.emitted('select-place')).toBeUndefined()
+      expect(input(w).element.value).toBe('Lyon')
+    })
+
+    it('au focus, le texte précédent est sélectionné (une nouvelle frappe le remplace)', async () => {
+      const w = mountBox()
+      await type(w, 'Lyon')
+      await key(w, 'Enter')
+      await vi.advanceTimersByTimeAsync(0)
+      input(w).element.blur()
+      await input(w).trigger('focus')
+      expect(input(w).element.selectionStart).toBe(0)
+      expect(input(w).element.selectionEnd).toBe(input(w).element.value.length)
+    })
+  })
+
   describe('Entrée', () => {
     it('choisit l\'option active (lieu) : select-place, liste fermée, nom dans le champ', async () => {
       const w = mountBox()
-      await type(w, 'Lyon')
+      await type(w, 'Lyo')
       await key(w, 'ArrowDown')
       await key(w, 'Enter')
       expect(w.emitted('select-place')).toEqual([[LYON_CAFE]])
@@ -188,13 +227,14 @@ describe('SearchBox', () => {
       expect(input(w).element.value).toBe('Lyon Café')
     })
 
-    it('choisit l\'option active (adresse) : select-address avec le résultat de l\'API', async () => {
+    it('choisit l\'option active (adresse) : select-address avec le résultat de l\'API, titre seul dans le champ', async () => {
       const w = mountBox()
-      await type(w, 'Lyon')
+      await type(w, 'Lyo')
       await key(w, 'ArrowUp')
       await key(w, 'Enter')
       expect(w.emitted('select-address')).toEqual([[GEOCODE_LYON.results[1]]])
-      expect(input(w).element.value).toBe(GEOCODE_LYON.results[1]!.label)
+      // « 69002, Lyon » → « 69002 » : plus court à remplacer par une nouvelle recherche.
+      expect(input(w).element.value).toBe('69002')
     })
 
     it('sans option active : le lieu au nom identique passe avant les adresses', async () => {

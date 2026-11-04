@@ -33,6 +33,8 @@ const endNavigation = () => guards.after.forEach(g => g())
 
 const view = ref<MapView | null>(null)
 const settled = ref(false)
+/** Carte centrée sur la position de l'utilisateur (vue retirée de l'URL). */
+const centeredOnUser = ref(false)
 const categories = ref<CategoryKey[]>([])
 const confirmedOnly = ref(false)
 
@@ -44,6 +46,7 @@ beforeEach(() => {
   replace.mockClear()
   view.value = null
   settled.value = false
+  centeredOnUser.value = false
   categories.value = []
   confirmedOnly.value = false
   for (const [name, fn] of Object.entries({ watch, onBeforeUnmount, viewToQuery, filtersToQuery, mergeMapQuery, sameQuery })) {
@@ -51,7 +54,7 @@ beforeEach(() => {
   }
   vi.stubGlobal('useRoute', () => route)
   vi.stubGlobal('useRouter', () => router)
-  vi.stubGlobal('useMapView', () => ({ view, settled }))
+  vi.stubGlobal('useMapView', () => ({ view, settled, centeredOnUser }))
   vi.stubGlobal('useFilters', () => ({ categories, confirmedOnly }))
 })
 
@@ -89,7 +92,7 @@ describe('useMapUrlSync — vue de la carte', () => {
     expect(replace).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
     expect(replace).toHaveBeenCalledOnce()
-    expect(replace).toHaveBeenCalledWith({ path: '/', query: { lat: '48.85661', lon: '2.35222', z: '15' }, hash: '' })
+    expect(replace).toHaveBeenCalledWith({ path: '/', query: { lat: '48.857', lon: '2.352', z: '15' }, hash: '' })
   })
 
   it('déplacements rapprochés : une seule écriture, avec la dernière vue', async () => {
@@ -102,7 +105,7 @@ describe('useMapUrlSync — vue de la carte', () => {
     expect(replace).not.toHaveBeenCalled()
     await wait(100)
     expect(replace).toHaveBeenCalledOnce()
-    expect(route.query).toMatchObject({ lat: '45.764', lon: '4.8357', z: '14' })
+    expect(route.query).toMatchObject({ lat: '45.764', lon: '4.836', z: '14' })
   })
 
   it('n\'écrit pas la vue tant que la position de départ n\'est pas trouvée', async () => {
@@ -113,7 +116,7 @@ describe('useMapUrlSync — vue de la carte', () => {
   })
 
   it('n\'écrit rien si l\'URL contient déjà cette vue', async () => {
-    route.query = { lat: '48.85661', lon: '2.35222', z: '15' }
+    route.query = { lat: '48.857', lon: '2.352', z: '15' }
     start()
     settled.value = true
     view.value = PARIS
@@ -129,7 +132,7 @@ describe('useMapUrlSync — vue de la carte', () => {
     await wait(400)
     expect(replace).toHaveBeenCalledWith({
       path: '/lieu/osm%3Anode%3A1',
-      query: { ref: 'partage', lat: '48.85661', lon: '2.35222', z: '15' },
+      query: { ref: 'partage', lat: '48.857', lon: '2.352', z: '15' },
       hash: '#avis',
     })
   })
@@ -145,6 +148,41 @@ describe('useMapUrlSync — vue de la carte', () => {
     expect(push).not.toHaveBeenCalled()
     expect(replace).toHaveBeenCalled()
     Reflect.deleteProperty(router, 'push')
+  })
+})
+
+describe('useMapUrlSync — position de l\'utilisateur jamais dans l\'URL', () => {
+  it('carte centrée sur la géolocalisation : aucune vue écrite', async () => {
+    start()
+    settled.value = true
+    centeredOnUser.value = true
+    view.value = PARIS
+    await wait(400)
+    expect(route.query).not.toHaveProperty('lat')
+    expect(route.query).not.toHaveProperty('lon')
+    expect(route.query).not.toHaveProperty('z')
+  })
+
+  it('« Me localiser » après une vue partagée : lat / lon / z retirés de l\'URL', async () => {
+    route.query = { lat: '48.857', lon: '2.352', z: '15', ref: 'partage' }
+    start()
+    settled.value = true
+    view.value = PARIS
+    centeredOnUser.value = true
+    await wait(0)
+    expect(replace).toHaveBeenCalled()
+    expect(route.query).toEqual({ ref: 'partage' })
+  })
+
+  it('déplacée ensuite par l\'utilisateur : la vue redevient partageable', async () => {
+    start()
+    settled.value = true
+    centeredOnUser.value = true
+    view.value = PARIS
+    await wait(400)
+    centeredOnUser.value = false
+    await wait(400)
+    expect(route.query).toMatchObject({ lat: '48.857', lon: '2.352', z: '15' })
   })
 })
 
@@ -184,7 +222,7 @@ describe('useMapUrlSync — filtres', () => {
     categories.value = ['beach']
     await wait(0)
     expect(replace).toHaveBeenCalledOnce()
-    expect(route.query).toEqual({ lat: '48.85661', lon: '2.35222', z: '15', cat: 'beach' })
+    expect(route.query).toEqual({ lat: '48.857', lon: '2.352', z: '15', cat: 'beach' })
   })
 })
 
@@ -205,7 +243,7 @@ describe('useMapUrlSync — navigations', () => {
   })
 
   it('après un changement de page, remet la vue actuelle dans la nouvelle URL', async () => {
-    route.query = { lat: '48.85661', lon: '2.35222', z: '15' }
+    route.query = { lat: '48.857', lon: '2.352', z: '15' }
     view.value = PARIS
     settled.value = true
     start()
@@ -214,7 +252,7 @@ describe('useMapUrlSync — navigations', () => {
     Object.assign(route, { path: '/lieu/osm%3Anode%3A7', query: { lat: '45', lon: '4', z: '10' } })
     endNavigation()
     await wait(0)
-    expect(replace).toHaveBeenCalledWith({ path: '/lieu/osm%3Anode%3A7', query: { lat: '48.85661', lon: '2.35222', z: '15' }, hash: '' })
+    expect(replace).toHaveBeenCalledWith({ path: '/lieu/osm%3Anode%3A7', query: { lat: '48.857', lon: '2.352', z: '15' }, hash: '' })
   })
 
   it('au démontage : plus d\'écriture et gardes du routeur retirées', async () => {
