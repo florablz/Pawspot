@@ -19,6 +19,7 @@ afterEach(() => {
 const STUBS = {
   PlaceHeader: true,
   PlaceItineraryLink: true,
+  PlaceShareButton: true,
   PlaceStatusNotice: true,
   PlaceFavoriteButton: true,
   PlaceDogStatusBadge: true,
@@ -59,16 +60,26 @@ describe('PlaceDetails — fiche complète ou embarquée', () => {
     global: { stubs: STUBS },
   })
 
-  it('seule (« Mes favoris ») : en-tête et itinéraire affichés', () => {
+  it('seule (« Mes favoris ») : en-tête, itinéraire et partage affichés', () => {
     const wrapper = mountDetails()
     expect(wrapper.findComponent({ name: 'PlaceHeader' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'PlaceItineraryLink' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'PlaceShareButton' }).exists()).toBe(true)
   })
 
-  it('embarquée dans la fiche de la carte : ni en-tête ni itinéraire (déjà dans la partie fixe)', () => {
+  it('itinéraire et partage reçoivent le lieu, sans position de l\'utilisateur', () => {
+    const wrapper = mountDetails()
+    for (const name of ['PlaceItineraryLink', 'PlaceShareButton']) {
+      const attrs = wrapper.findComponent({ name }).attributes()
+      expect(Object.keys(attrs), name).not.toContain('origin')
+    }
+  })
+
+  it('embarquée dans la fiche de la carte : ni en-tête, ni itinéraire, ni partage (déjà dans la partie fixe)', () => {
     const wrapper = mountDetails({ embedded: true })
     expect(wrapper.findComponent({ name: 'PlaceHeader' }).exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'PlaceItineraryLink' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'PlaceShareButton' }).exists()).toBe(false)
   })
 
   it('embarquée : garde bandeau d\'état, alertes, infos et avis', () => {

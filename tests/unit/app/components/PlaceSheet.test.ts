@@ -43,11 +43,11 @@ const PLACE = makePlace({ id: 'osm:node:1', name: 'Parc de la Tête d\'Or' })
 
 function mountSheet(place = PLACE) {
   return mount(PlaceSheet, {
-    props: { place, origin: null },
+    props: { place },
     attachTo: document.body,
     global: {
       components: { PlaceHeader },
-      stubs: { PlaceDetails: DetailsStub, PlaceFavoriteButton: true, PlaceDogStatusBadge: true, PlaceItineraryLink: true },
+      stubs: { PlaceDetails: DetailsStub, PlaceFavoriteButton: true, PlaceDogStatusBadge: true, PlaceItineraryLink: true, PlaceShareButton: true },
     },
   })
 }
@@ -157,6 +157,12 @@ describe('PlaceSheet — aperçu et fiche dépliée (mobile)', () => {
 
   it('le contenu est affiché en mode embarqué (sans en-tête ni itinéraire en double)', () => {
     expect(mountSheet().get('[data-testid="details-content"]').attributes('data-embedded')).toBe('true')
+  })
+
+  it('partie fixe : « Itinéraire » et « Partager » une seule fois chacun', () => {
+    const wrapper = mountSheet()
+    expect(wrapper.findAllComponents({ name: 'PlaceItineraryLink' })).toHaveLength(1)
+    expect(wrapper.findAllComponents({ name: 'PlaceShareButton' })).toHaveLength(1)
   })
 })
 

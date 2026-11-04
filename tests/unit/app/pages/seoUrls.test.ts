@@ -47,7 +47,6 @@ beforeEach(() => {
   vi.stubGlobal('useRoute', () => route)
   vi.stubGlobal('usePlaceSheet', () => ({ selected: ref<Place | null>(null), close: vi.fn() }))
   vi.stubGlobal('usePlaces', () => ({ places: ref<Place[]>([]) }))
-  vi.stubGlobal('useUserLocation', () => ({ latitude: ref(null), longitude: ref(null) }))
   vi.stubGlobal('useFetch', () => ({ data, error: fetchError, status: ref('success'), refresh: vi.fn() }))
   vi.stubGlobal('navigateTo', vi.fn())
   vi.stubGlobal('setResponseStatus', vi.fn())
