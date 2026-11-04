@@ -42,9 +42,20 @@ export function isExactPlaceMatch(place: Place, query: string): boolean {
   return normalizeName(place.name) === normalizeName(query)
 }
 
+/**
+ * La recherche est exactement le nom de cette ville (« Lyon » pour « Lyon,
+ * Métropole de Lyon… » ou « Lyon (69) ») : la ville passe alors avant les lieux PawSpot.
+ */
+export function isExactCityMatch(result: GeocodeResult, query: string): boolean {
+  if (result.type !== 'city') return false
+  const q = normalizeName(query)
+  return normalizeName(splitGeocodeLabel(result).title) === q || (!!result.city && normalizeName(result.city) === q)
+}
+
 /** Zoom maximal (et zoom sans emprise) selon la nature du résultat. */
 export const GEOCODE_ZOOM: Record<GeocodeResultType, number> = {
-  address: 18,
+  // 16 : l'adresse et les lieux de la rue autour (18 ne montrait que l'immeuble).
+  address: 16,
   place: 17,
   street: 16,
   postcode: 14,

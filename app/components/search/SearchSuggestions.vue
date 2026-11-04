@@ -6,7 +6,7 @@ import type { SearchOption } from '~/types/search'
 
 /**
  * Liste des suggestions (popup du combobox) en deux groupes : lieux PawSpot,
- * puis adresses / villes. Les options ne prennent jamais le focus (le focus
+ * puis adresses / villes (l'inverse si la recherche est le nom exact d'une ville). Les options ne prennent jamais le focus (le focus
  * reste dans le champ, `aria-activedescendant`) ; le clic garde le focus.
  * Fond opaque (pas `glass-strong`) : un flou imbriqué dans celui de la barre
  * n'est pas appliqué par Chrome et les puces de filtre transparaissaient.
@@ -17,7 +17,9 @@ const props = defineProps<{
   optionId: (index: number) => string
   places: readonly Place[]
   addresses: readonly GeocodeResult[]
-  /** Index actif dans la liste à plat (lieux puis adresses), -1 si aucun. */
+  /** Adresses et villes avant les lieux PawSpot. */
+  addressesFirst?: boolean
+  /** Index actif dans la liste à plat (dans l'ordre affiché), -1 si aucun. */
   active: number
   status: GeocodeStatus
   error: string | null
@@ -32,7 +34,10 @@ defineEmits<{
 
 const placesHeadingId = computed(() => `${props.listboxId}-places`)
 const addressesHeadingId = computed(() => `${props.listboxId}-addresses`)
-const offset = computed(() => props.places.length)
+/** Index du premier lieu et de la première adresse dans la liste à plat. */
+const placeOffset = computed(() => (props.addressesFirst ? props.addresses.length : 0))
+const addressOffset = computed(() => (props.addressesFirst ? 0 : props.places.length))
+const groups = computed(() => (props.addressesFirst ? ['addresses', 'places'] as const : ['places', 'addresses'] as const))
 const loadingAddresses = computed(() => props.status === 'pending' && props.addresses.length === 0)
 
 const optionClass = (selected: boolean) => [
@@ -48,57 +53,59 @@ const heading = 'px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide te
     data-testid="search-suggestions"
   >
     <ul :id="listboxId" role="listbox" aria-label="Suggestions de recherche" class="flex flex-col">
-      <li v-if="places.length" role="presentation">
-        <ul role="group" :aria-labelledby="placesHeadingId">
-          <li :id="placesHeadingId" role="presentation" :class="heading">Lieux PawSpot</li>
-          <li
-            v-for="(place, i) in places"
-            :id="optionId(i)"
-            :key="place.id"
-            role="option"
-            :aria-selected="active === i"
-            :class="optionClass(active === i)"
-            data-testid="search-option-place"
-            @mousedown.prevent
-            @pointermove="$emit('hover', i)"
-            @click="$emit('choose', { kind: 'place', place })"
-          >
-            <span class="shrink-0 text-lg" aria-hidden="true">{{ CATEGORIES[place.category]?.icon ?? DEFAULT_CATEGORY_ICON }}</span>
-            <span class="flex min-w-0 flex-1 flex-col gap-1">
-              <span class="truncate text-sm font-semibold text-white">{{ place.name }}</span>
-              <span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <PlaceDogStatusBadge :place="place" compact />
-                <span class="text-xs text-white/75">{{ CATEGORIES[place.category]?.singular ?? 'Lieu' }}</span>
+      <template v-for="group in groups" :key="group">
+        <li v-if="group === 'places' && places.length" role="presentation">
+          <ul role="group" :aria-labelledby="placesHeadingId">
+            <li :id="placesHeadingId" role="presentation" :class="heading">Lieux PawSpot</li>
+            <li
+              v-for="(place, i) in places"
+              :id="optionId(placeOffset + i)"
+              :key="place.id"
+              role="option"
+              :aria-selected="active === placeOffset + i"
+              :class="optionClass(active === placeOffset + i)"
+              data-testid="search-option-place"
+              @mousedown.prevent
+              @pointermove="$emit('hover', placeOffset + i)"
+              @click="$emit('choose', { kind: 'place', place })"
+            >
+              <span class="shrink-0 text-lg" aria-hidden="true">{{ CATEGORIES[place.category]?.icon ?? DEFAULT_CATEGORY_ICON }}</span>
+              <span class="flex min-w-0 flex-1 flex-col gap-1">
+                <span class="truncate text-sm font-semibold text-white">{{ place.name }}</span>
+                <span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <PlaceDogStatusBadge :place="place" compact />
+                  <span class="text-xs text-white/75">{{ CATEGORIES[place.category]?.singular ?? 'Lieu' }}</span>
+                </span>
               </span>
-            </span>
-          </li>
-        </ul>
-      </li>
-      <li v-if="addresses.length" role="presentation">
-        <ul role="group" :aria-labelledby="addressesHeadingId">
-          <li :id="addressesHeadingId" role="presentation" :class="heading">Adresses et villes</li>
-          <li
-            v-for="(result, i) in addresses"
-            :id="optionId(offset + i)"
-            :key="`${result.lat},${result.lon},${result.label}`"
-            role="option"
-            :aria-selected="active === offset + i"
-            :class="optionClass(active === offset + i)"
-            data-testid="search-option-address"
-            @mousedown.prevent
-            @pointermove="$emit('hover', offset + i)"
-            @click="$emit('choose', { kind: 'address', result })"
-          >
-            <span class="shrink-0 text-lg" aria-hidden="true">{{ GEOCODE_TYPE_DISPLAY[result.type].icon }}</span>
-            <span class="flex min-w-0 flex-1 flex-col">
-              <span class="truncate text-sm font-semibold text-white">{{ splitGeocodeLabel(result).title }}</span>
-              <span class="truncate text-xs text-white/75">
-                {{ GEOCODE_TYPE_DISPLAY[result.type].label }}<template v-if="splitGeocodeLabel(result).detail"> · {{ splitGeocodeLabel(result).detail }}</template>
+            </li>
+          </ul>
+        </li>
+        <li v-if="group === 'addresses' && addresses.length" role="presentation">
+          <ul role="group" :aria-labelledby="addressesHeadingId">
+            <li :id="addressesHeadingId" role="presentation" :class="heading">Adresses et villes</li>
+            <li
+              v-for="(result, i) in addresses"
+              :id="optionId(addressOffset + i)"
+              :key="`${result.lat},${result.lon},${result.label}`"
+              role="option"
+              :aria-selected="active === addressOffset + i"
+              :class="optionClass(active === addressOffset + i)"
+              data-testid="search-option-address"
+              @mousedown.prevent
+              @pointermove="$emit('hover', addressOffset + i)"
+              @click="$emit('choose', { kind: 'address', result })"
+            >
+              <span class="shrink-0 text-lg" aria-hidden="true">{{ GEOCODE_TYPE_DISPLAY[result.type].icon }}</span>
+              <span class="flex min-w-0 flex-1 flex-col">
+                <span class="truncate text-sm font-semibold text-white">{{ splitGeocodeLabel(result).title }}</span>
+                <span class="truncate text-xs text-white/75">
+                  {{ GEOCODE_TYPE_DISPLAY[result.type].label }}<template v-if="splitGeocodeLabel(result).detail"> · {{ splitGeocodeLabel(result).detail }}</template>
+                </span>
               </span>
-            </span>
-          </li>
-        </ul>
-      </li>
+            </li>
+          </ul>
+        </li>
+      </template>
     </ul>
 
     <p v-if="loadingAddresses" class="flex min-h-[44px] items-center gap-2 px-3 text-sm text-white/80" data-testid="search-status-loading">

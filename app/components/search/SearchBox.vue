@@ -29,10 +29,14 @@ const geocode = useGeocode()
 
 const placeMatches = computed(() => matchPlaces(props.places, query.value))
 const addressMatches = computed(() => (isSearchable(query.value) ? geocode.results.value : []))
-const options = computed<SearchOption[]>(() => [
-  ...placeMatches.value.map(place => ({ kind: 'place' as const, place })),
-  ...addressMatches.value.map(result => ({ kind: 'address' as const, result })),
-])
+/** La recherche est le nom exact d'une ville trouvée : adresses et villes d'abord. */
+const exactCity = computed(() => addressMatches.value.find(r => isExactCityMatch(r, query.value)))
+const addressesFirst = computed(() => !!exactCity.value)
+const options = computed<SearchOption[]>(() => {
+  const places = placeMatches.value.map(place => ({ kind: 'place' as const, place }))
+  const addresses = addressMatches.value.map(result => ({ kind: 'address' as const, result }))
+  return addressesFirst.value ? [...addresses, ...places] : [...places, ...addresses]
+})
 
 const searchable = computed(() => isSearchable(query.value))
 const expanded = computed(() => open.value && searchable.value)
@@ -74,20 +78,26 @@ function choose(option: SearchOption) {
     emit('select-place', option.place)
   }
   else {
-    query.value = option.result.label
+    // Le titre seul (« Lyon ») : plus court à remplacer par une nouvelle recherche.
+    query.value = splitGeocodeLabel(option.result).title
     // Sur écran tactile, on range le clavier pour dégager la carte.
     if (matchesMedia('(pointer: coarse)')) input.value?.blur()
     emit('select-address', option.result)
   }
 }
 
-/** Entrée sans option active : lieu au nom identique, sinon première adresse, sinon premier lieu. */
+/**
+ * Entrée sans option active : ville au nom identique, sinon lieu au nom
+ * identique, sinon première adresse, sinon premier lieu.
+ */
 async function chooseDefault() {
   const q = query.value
+  if (exactCity.value) return choose({ kind: 'address', result: exactCity.value })
   const exact = placeMatches.value.find(p => isExactPlaceMatch(p, q))
   if (exact) return choose({ kind: 'place', place: exact })
   await geocode.flush()
   if (query.value !== q) return
+  if (exactCity.value) return choose({ kind: 'address', result: exactCity.value })
   const first = addressMatches.value[0]
   if (first) return choose({ kind: 'address', result: first })
   const place = placeMatches.value[0]
@@ -136,6 +146,23 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+/**
+ * Au focus, tout le texte est sélectionné : une nouvelle frappe remplace la
+ * recherche précédente. Le relâchement du clic qui a donné le focus ne doit
+ * pas annuler la sélection.
+ */
+const KEEP_SELECTION_MS = 600
+let keepSelectionUntil = 0
+function onFocus() {
+  if (!query.value) return
+  input.value?.select()
+  keepSelectionUntil = Date.now() + KEEP_SELECTION_MS
+}
+function onMouseUp(e: MouseEvent) {
+  if (Date.now() < keepSelectionUntil) e.preventDefault()
+  keepSelectionUntil = 0
+}
+
 function onFocusOut(e: FocusEvent) {
   const next = e.relatedTarget as Node | null
   if (!next || !root.value?.contains(next)) close()
@@ -178,6 +205,8 @@ const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible
         data-testid="search-input"
         @input="onInput"
         @keydown="onKeydown"
+        @focus="onFocus"
+        @mouseup="onMouseUp"
       >
       <span
         v-if="geocode.status.value === 'pending' && searchable"
@@ -205,6 +234,7 @@ const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible
       :option-id="optionId"
       :places="placeMatches"
       :addresses="addressMatches"
+      :addresses-first="addressesFirst"
       :active="active"
       :status="geocode.status.value"
       :error="geocode.error.value"
