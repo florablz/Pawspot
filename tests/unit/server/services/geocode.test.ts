@@ -66,7 +66,23 @@ describe('geocodeCacheKey', () => {
   it('« PARIS », « paris » et «  Paris  » donnent la même clé', () => {
     expect(geocodeCacheKey('PARIS')).toBe('paris')
     expect(geocodeCacheKey('  Paris  ')).toBe('paris')
-    expect(geocodeCacheKey('Saint-Étienne')).toBe('saint etienne')
+  })
+
+  it('accents, ponctuation et caractères non latins conservés (clé = requête envoyée)', () => {
+    expect(geocodeCacheKey('Saint-Étienne')).toBe('saint-étienne')
+    expect(geocodeCacheKey('12 rue de Rivoli, Paris')).toBe('12 rue de rivoli, paris')
+    expect(geocodeCacheKey('Lyon 東京')).toBe('lyon 東京')
+    expect(geocodeCacheKey('Lyon 東京')).not.toBe(geocodeCacheKey('Lyon'))
+    expect(geocodeCacheKey('Lyon!')).not.toBe(geocodeCacheKey('Lyon'))
+  })
+
+  it('NFC : « é » composé ou décomposé donnent la même clé', () => {
+    expect(geocodeCacheKey('Ste\u0301phanie')).toBe(geocodeCacheKey('St\u00e9phanie'))
+  })
+
+  it('clé vide au-delà de 200 caractères (jamais tronquée, deux requêtes ne partagent pas une entrée)', () => {
+    expect(geocodeCacheKey('a'.repeat(200))).toBe('a'.repeat(200))
+    expect(geocodeCacheKey('a'.repeat(201))).toBe('')
   })
 
   it('clé vide si la requête n\'a ni lettre ni chiffre', () => {

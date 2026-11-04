@@ -339,6 +339,22 @@ describe('file d\'attente (horloge et attente injectées)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  // BUG (agent `back`, server/utils/nominatim.ts:429) : la clé des requêtes en cours est
+  // encore `normalizeName` (accents, ponctuation et caractères non latins retirés), alors
+  // que depuis 682e019 la clé du cache est `normalizeGeocodeQuery`. « Lyon 東京 » lancé
+  // pendant « Lyon » reçoit la réponse de « Lyon », que la route écrit ensuite en cache
+  // sous la clé « lyon 東京 » : exactement le mélange que 682e019 voulait empêcher.
+  // Correctif attendu : clé `normalizeGeocodeQuery(query)` (et envoyer cette chaîne à Nominatim).
+  it.fails('requêtes différentes pour le cache (« Lyon » / « Lyon 東京 ») : jamais partagées en cours', async () => {
+    fetchMock.mockImplementation(async url => json(new URL(String(url)).searchParams.get('q') === 'Lyon' ? lyonFixture : []))
+    const first = searchNominatim('Lyon', deps())
+    const second = searchNominatim('Lyon 東京', deps())
+    expect(second).not.toBe(first)
+    expect(await first).toEqual(LYON_RESULTS)
+    expect(await second).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('une requête en échec n\'est pas gardée en cours', async () => {
     fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
     await reasonOf(searchNominatim('Lyon', deps()))
