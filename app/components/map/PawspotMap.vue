@@ -55,7 +55,10 @@ function reducedMotion(): boolean {
  * appelé à chaque ajout sur la carte et après chaque changement d'icône.
  */
 function labelMarker(marker: Leaflet.Marker, place: Place) {
-  marker.getElement()?.setAttribute('aria-label', `${place.name}. ${dogStatusAccessibleText(place.dogStatus, place.dogStatusSource)}`)
+  const el = marker.getElement()
+  if (!el) return
+  el.setAttribute('role', 'button')
+  el.setAttribute('aria-label', `${place.name}. ${dogStatusAccessibleText(place.dogStatus, place.dogStatusSource)}`)
 }
 
 function createMarker(lib: typeof Leaflet, place: Place, selected: boolean): Leaflet.Marker {
@@ -65,6 +68,13 @@ function createMarker(lib: typeof Leaflet, place: Place, selected: boolean): Lea
     zIndexOffset: selected ? 500 : 0,
   })
   marker.on('click', () => emit('select-place', place))
+  // Leaflet n'active pas un marqueur au clavier : Entrée / Espace ouvrent la fiche.
+  marker.on('keydown', (e) => {
+    const key = (e as Leaflet.LeafletKeyboardEvent).originalEvent
+    if (key.key !== 'Enter' && key.key !== ' ') return
+    key.preventDefault()
+    emit('select-place', place)
+  })
   marker.on('add', () => labelMarker(marker, place))
   return marker
 }
