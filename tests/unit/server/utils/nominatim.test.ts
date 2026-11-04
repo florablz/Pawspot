@@ -242,7 +242,9 @@ describe('file d\'attente (horloge et attente injectées)', () => {
     expect(await searchNominatim('Lyon', deps())).toEqual(LYON_RESULTS)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]!
-    expect(url).toBe(nominatimSearchUrl('Lyon'))
+    // Chaîne envoyée = requête normalisée (`normalizeGeocodeQuery`), identique à la clé du cache.
+    expect(url).toBe(nominatimSearchUrl('lyon'))
+    expect(new URL(String(url)).searchParams.get('q')).toBe('lyon')
     expect((init!.headers as Record<string, string>)['User-Agent']).toBe(PAWSPOT_USER_AGENT)
     expect(init!.signal).toBeInstanceOf(AbortSignal)
   })
@@ -339,14 +341,10 @@ describe('file d\'attente (horloge et attente injectées)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  // BUG (agent `back`, server/utils/nominatim.ts:429) : la clé des requêtes en cours est
-  // encore `normalizeName` (accents, ponctuation et caractères non latins retirés), alors
-  // que depuis 682e019 la clé du cache est `normalizeGeocodeQuery`. « Lyon 東京 » lancé
-  // pendant « Lyon » reçoit la réponse de « Lyon », que la route écrit ensuite en cache
-  // sous la clé « lyon 東京 » : exactement le mélange que 682e019 voulait empêcher.
-  // Correctif attendu : clé `normalizeGeocodeQuery(query)` (et envoyer cette chaîne à Nominatim).
-  it.fails('requêtes différentes pour le cache (« Lyon » / « Lyon 東京 ») : jamais partagées en cours', async () => {
-    fetchMock.mockImplementation(async url => json(new URL(String(url)).searchParams.get('q') === 'Lyon' ? lyonFixture : []))
+  // Corrigé par 5e2e972 (back) : la clé des requêtes en cours est `normalizeGeocodeQuery`,
+  // comme celle du cache. Avant, « Lyon 東京 » recevait la réponse de « Lyon ».
+  it('requêtes différentes pour le cache (« Lyon » / « Lyon 東京 ») : jamais partagées en cours', async () => {
+    fetchMock.mockImplementation(async url => json(new URL(String(url)).searchParams.get('q') === 'lyon' ? lyonFixture : []))
     const first = searchNominatim('Lyon', deps())
     const second = searchNominatim('Lyon 東京', deps())
     expect(second).not.toBe(first)
