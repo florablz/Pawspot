@@ -9,6 +9,7 @@ import { deferred, makePlace, placesResponse } from '../_helpers'
 interface FetchOptions {
   query: { bbox: string, zoom: number }
   signal: AbortSignal
+  retry?: number | false
 }
 
 // Le composable s'appuie sur les auto-imports Nuxt (ref, $fetch, getApiErrorMessage) :
@@ -42,6 +43,27 @@ const names = (search: ReturnType<typeof usePlacesSearch>) => search.places.valu
 
 describe('usePlacesSearch', () => {
   describe('requête', () => {
+    it('désactive la relance automatique d\'ofetch (retry: 0) : seules les relances `incomplete` comptent', async () => {
+      fetchMock.mockRejectedValueOnce(Object.assign(new Error('503'), { statusCode: 503 }))
+      const search = usePlacesSearch()
+
+      await search.fetchPlaces(PARIS)
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0]![1].retry).toBe(0)
+      expect(search.searchError.value).toBeTruthy()
+    })
+
+    it('retry: 0 aussi sur chaque relance `incomplete`', async () => {
+      fetchMock
+        .mockResolvedValueOnce(placesResponse([], { incomplete: true }))
+        .mockResolvedValueOnce(placesResponse([]))
+      await usePlacesSearch().fetchPlaces(PARIS)
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls.map(c => c[1].retry)).toEqual([0, 0])
+    })
+
     it('appelle /api/places avec { bbox, zoom } et un zoom arrondi à l\'entier', async () => {
       fetchMock.mockResolvedValue(placesResponse([]))
       const search = usePlacesSearch()
