@@ -125,11 +125,12 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPoin
     <div
       v-show="open"
       :id="menuId"
-      class="glass-strong absolute left-0 z-20 w-full min-w-[14rem] rounded-xl p-1.5 shadow-xl"
+      class="absolute left-0 z-20 w-full min-w-[14rem] rounded-xl border border-white/15 bg-paw-brown-800 p-1.5 shadow-xl shadow-black/40"
       :class="openUp ? 'bottom-full mb-2' : 'top-full mt-2'"
       data-testid="itinerary-menu"
       @keydown="onMenuKeydown"
     >
+      <!-- Fond opaque : le menu passe au-dessus du contenu de la fiche (blanc à 70 % sur marron 800 ≈ 7,5:1). -->
       <p class="px-3 pb-1 pt-1.5 text-xs font-medium text-white/70">Ouvrir l'itinéraire dans :</p>
       <ul>
         <li v-for="option in options" :key="option.app">
