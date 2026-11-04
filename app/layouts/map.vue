@@ -54,7 +54,12 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
         />
       </div>
 
-      <div class="pointer-events-none absolute inset-x-0 top-[68px] z-[1000] px-3" :class="besidePanel">
+      <!-- Fiche dépliée sur mobile : les filtres, à moitié recouverts, sont masqués. -->
+      <div
+        class="pointer-events-none absolute inset-x-0 top-[68px] z-[1000] px-3"
+        :class="[besidePanel, sheetOpen && snap === 'full' ? 'max-lg:hidden' : '']"
+        data-testid="filters-bar"
+      >
         <SearchCategoryFilters
           v-model:categories="s.categories.value"
           v-model:confirmed-only="s.confirmedOnly.value"
