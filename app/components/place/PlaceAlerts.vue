@@ -117,7 +117,7 @@ watch(() => props.placeId, () => {
       <NuxtLink
         v-else-if="!loggedIn"
         :to="loginLink"
-        class="flex min-h-[44px] items-center rounded-full bg-paw-red-700/30 px-4 text-xs font-medium text-paw-red-200 transition hover:bg-paw-red-700/50"
+        class="flex min-h-[44px] items-center rounded-full bg-paw-orange-500/20 px-4 text-xs font-medium text-paw-orange-300 transition hover:bg-paw-orange-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paw-orange-300"
       >
         Connectez-vous pour signaler
       </NuxtLink>
