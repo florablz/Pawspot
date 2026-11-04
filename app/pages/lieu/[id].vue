@@ -68,7 +68,8 @@ const pageDescription = computed(() => {
   if (!p) return 'Ce lieu n\'existe plus ou est introuvable sur PawSpot.'
   const parts = [CATEGORIES[p.category]?.singular ?? 'Lieu', `Chiens : ${DOG_STATUS_LABELS[p.dogStatus].label}`]
   if (p.dogStatusSource) parts.push(`source : ${p.dogStatusSource}`)
-  if (p.address) parts.push(p.address)
+  // Une adresse réduite à un numéro (« 1 », sans rue) n'apporte rien à l'aperçu.
+  if (p.address && /\p{L}/u.test(p.address)) parts.push(p.address)
   return parts.join(' · ')
 })
 const canonical = `${appUrl}${placePath(id)}`
