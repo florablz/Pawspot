@@ -1,0 +1,103 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (fixture PawSpot, parcours e2e)",
+  "osm3s": { "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL." },
+  "elements": [
+    {
+      "type": "node",
+      "id": 1101,
+      "lat": 48.8580,
+      "lon": 2.3460,
+      "tags": {
+        "amenity": "cafe",
+        "name": "Café Saint-Jacques",
+        "outdoor_seating": "yes",
+        "dog": "yes",
+        "addr:housenumber": "41",
+        "addr:street": "Rue de Rivoli",
+        "addr:postcode": "75004",
+        "addr:city": "Paris",
+        "opening_hours": "Mo-Su 07:30-23:00"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1102,
+      "lat": 48.8578,
+      "lon": 2.3580,
+      "tags": {
+        "amenity": "cafe",
+        "name": "Le Pick-Clops",
+        "outdoor_seating": "yes",
+        "dog": "leashed",
+        "addr:housenumber": "16",
+        "addr:street": "Rue Vieille-du-Temple",
+        "addr:postcode": "75004",
+        "addr:city": "Paris",
+        "phone": "+33 1 40 29 02 18"
+      }
+    },
+    {
+      "type": "way",
+      "id": 2101,
+      "center": { "lat": 48.8579, "lon": 2.3488 },
+      "tags": { "leisure": "park", "name": "Square de la Tour Saint-Jacques", "dog": "no" }
+    },
+    {
+      "type": "way",
+      "id": 2102,
+      "center": { "lat": 48.8546, "lon": 2.3561 },
+      "tags": { "leisure": "park", "name": "Square Louis XIII", "dog:conditional": "no @ (Jun-Sep)" }
+    },
+    {
+      "type": "node",
+      "id": 1103,
+      "lat": 48.8552,
+      "lon": 2.3530,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Chez Julien",
+        "outdoor_seating": "yes",
+        "cuisine": "french",
+        "addr:housenumber": "1",
+        "addr:street": "Rue du Pont Louis-Philippe",
+        "addr:postcode": "75004",
+        "addr:city": "Paris"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1104,
+      "lat": 48.8600,
+      "lon": 2.3530,
+      "tags": { "amenity": "bar", "outdoor_seating": "yes" }
+    },
+    {
+      "type": "node",
+      "id": 1105,
+      "lat": 48.8538,
+      "lon": 2.3489,
+      "tags": { "amenity": "veterinary", "name": "Clinique vétérinaire de la Cité" }
+    },
+    {
+      "type": "node",
+      "id": 1201,
+      "lat": 45.7640,
+      "lon": 4.8357,
+      "tags": { "amenity": "cafe", "name": "Café des Jacobins", "outdoor_seating": "yes", "dog": "yes", "addr:city": "Lyon" }
+    },
+    {
+      "type": "way",
+      "id": 2201,
+      "center": { "lat": 45.7772, "lon": 4.8558 },
+      "tags": { "leisure": "park", "name": "Parc de la Tête d'Or", "dog": "leashed" }
+    },
+    {
+      "type": "node",
+      "id": 1301,
+      "lat": 48.3904,
+      "lon": -4.4861,
+      "tags": { "amenity": "bar", "name": "Le Tour du Monde", "outdoor_seating": "yes", "dog": "yes", "addr:city": "Brest" }
+    }
+  ]
+}

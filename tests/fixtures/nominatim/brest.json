@@ -1,0 +1,30 @@
+[
+  {
+    "place_id": 79125311,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "relation",
+    "osm_id": 1076124,
+    "lat": "48.3905283",
+    "lon": "-4.4860088",
+    "category": "boundary",
+    "type": "administrative",
+    "place_rank": 16,
+    "importance": 0.6719386563394399,
+    "addresstype": "city",
+    "name": "Brest",
+    "display_name": "Brest, Finistère, Bretagne, France métropolitaine, 29200, France",
+    "address": {
+      "city": "Brest",
+      "municipality": "Brest",
+      "county": "Finistère",
+      "ISO3166-2-lvl6": "FR-29",
+      "state": "Bretagne",
+      "ISO3166-2-lvl4": "FR-BRE",
+      "region": "France métropolitaine",
+      "postcode": "29200",
+      "country": "France",
+      "country_code": "fr"
+    },
+    "boundingbox": ["48.3586206", "48.4597506", "-4.5689423", "-4.4277924"]
+  }
+]

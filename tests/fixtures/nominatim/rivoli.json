@@ -1,0 +1,56 @@
+[
+  {
+    "place_id": 88270120,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "node",
+    "osm_id": 3132567189,
+    "lat": "48.8556",
+    "lon": "2.3593",
+    "category": "place",
+    "type": "house",
+    "place_rank": 30,
+    "importance": 0.00000999999999995449,
+    "addresstype": "place",
+    "name": "",
+    "display_name": "12, Rue de Rivoli, Quartier Saint-Merri, Paris 4e Arrondissement, Paris, Île-de-France, France métropolitaine, 75004, France",
+    "address": {
+      "house_number": "12",
+      "road": "Rue de Rivoli",
+      "quarter": "Quartier Saint-Merri",
+      "suburb": "Paris 4e Arrondissement",
+      "city_district": "Paris",
+      "city": "Paris",
+      "ISO3166-2-lvl6": "FR-75C",
+      "state": "Île-de-France",
+      "ISO3166-2-lvl4": "FR-IDF",
+      "region": "France métropolitaine",
+      "postcode": "75004",
+      "country": "France",
+      "country_code": "fr"
+    },
+    "boundingbox": ["48.8555500", "48.8556500", "2.3592500", "2.3593500"]
+  },
+  {
+    "place_id": 88261734,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 4053520,
+    "lat": "48.8606",
+    "lon": "2.3376",
+    "category": "highway",
+    "type": "primary",
+    "place_rank": 26,
+    "importance": 0.0533,
+    "addresstype": "road",
+    "name": "Rue de Rivoli",
+    "display_name": "Rue de Rivoli, Quartier Saint-Germain-l'Auxerrois, Paris 1er Arrondissement, Paris, Île-de-France, France métropolitaine, 75001, France",
+    "address": {
+      "road": "Rue de Rivoli",
+      "city": "Paris",
+      "postcode": "75001",
+      "country": "France",
+      "country_code": "fr"
+    },
+    "boundingbox": ["48.8530", "48.8660", "2.3226", "2.3640"]
+  }
+]
