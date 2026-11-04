@@ -2,10 +2,21 @@
 import { CATEGORY_LIST, type CategoryKey } from '#shared/categories'
 
 /**
- * Puces de filtre : catégories (multi-sélection, aucune = toutes) puis
- * « Confirmés » (chiens acceptés confirmés par la communauté uniquement).
+ * Puces de filtre : « Confirmés » (chiens acceptés confirmés par la communauté
+ * uniquement) en tête, puis les catégories (multi-sélection, aucune = toutes).
  * Un dégradé en bout de rangée indique qu'il reste des puces à faire défiler.
  */
+
+/**
+ * Ordre d'affichage des puces : les catégories les plus cherchées d'abord
+ * (visibles sans défiler à 375 px), puis les autres dans l'ordre de la config.
+ */
+const DISPLAY_FIRST: CategoryKey[] = ['restaurant', 'cafe', 'bar', 'park', 'dog_park', 'beach', 'vet']
+const rank = (key: CategoryKey) => {
+  const i = DISPLAY_FIRST.indexOf(key)
+  return i === -1 ? DISPLAY_FIRST.length : i
+}
+const chips = [...CATEGORY_LIST].sort((a, b) => rank(a.key) - rank(b.key))
 const categories = defineModel<CategoryKey[]>('categories', { required: true })
 const confirmedOnly = defineModel<boolean>('confirmedOnly', { required: true })
 
@@ -61,18 +72,6 @@ const arrowBtn = 'pointer-events-auto absolute top-0 hidden h-11 w-11 items-cent
       @scroll.passive="updateScrollHints"
     >
       <button
-        v-for="cat in CATEGORY_LIST"
-        :key="cat.key"
-        type="button"
-        :class="[chipBase, categories.includes(cat.key) ? chipOn : chipOff]"
-        :aria-pressed="categories.includes(cat.key)"
-        @click="toggle(cat.key)"
-      >
-        <span aria-hidden="true">{{ cat.icon }}</span>
-        <span>{{ cat.label }}</span>
-      </button>
-      <span class="my-2 w-px shrink-0 bg-white/30" aria-hidden="true" />
-      <button
         type="button"
         :class="[chipBase, confirmedOnly ? 'bg-paw-green-700 text-white shadow-lg shadow-paw-green-700/25' : chipOff]"
         :aria-pressed="confirmedOnly"
@@ -82,6 +81,18 @@ const arrowBtn = 'pointer-events-auto absolute top-0 hidden h-11 w-11 items-cent
       >
         <span aria-hidden="true">✅</span>
         <span aria-hidden="true">Confirmés</span>
+      </button>
+      <span class="my-2 w-px shrink-0 bg-white/30" aria-hidden="true" />
+      <button
+        v-for="cat in chips"
+        :key="cat.key"
+        type="button"
+        :class="[chipBase, categories.includes(cat.key) ? chipOn : chipOff]"
+        :aria-pressed="categories.includes(cat.key)"
+        @click="toggle(cat.key)"
+      >
+        <span aria-hidden="true">{{ cat.icon }}</span>
+        <span>{{ cat.label }}</span>
       </button>
     </div>
 
