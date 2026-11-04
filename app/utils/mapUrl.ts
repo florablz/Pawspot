@@ -57,9 +57,14 @@ export function parseFiltersQuery(query: LocationQuery): UrlFilters {
   return { categories, confirmedOnly: first(query.confirmes) === '1' }
 }
 
-/** 5 décimales (≈ 1 m), sans zéros inutiles. */
+/**
+ * 3 décimales (≈ 100 m), sans zéros inutiles : assez pour retrouver la vue
+ * (le zoom fait le reste), pas assez pour situer un domicile dans un lien partagé.
+ */
+export const URL_COORD_DECIMALS = 3
+
 function formatCoord(value: number): string {
-  return String(Number(value.toFixed(5)))
+  return String(Number(value.toFixed(URL_COORD_DECIMALS)))
 }
 
 export function viewToQuery(view: UrlMapView): Record<'lat' | 'lon' | 'z', string> {

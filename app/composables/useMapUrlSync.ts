@@ -9,7 +9,7 @@ const VIEW_SYNC_DELAY = 400
 export function useMapUrlSync() {
   const route = useRoute()
   const router = useRouter()
-  const { view, settled } = useMapView()
+  const { view, settled, centeredOnUser } = useMapView()
   const { categories, confirmedOnly } = useFilters()
 
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -28,8 +28,12 @@ export function useMapUrlSync() {
       return
     }
     const v = settled.value ? view.value : null
+    // Vue centrée sur la position de l'utilisateur : retirée de l'URL.
+    const viewPatch = centeredOnUser.value
+      ? { lat: undefined, lon: undefined, z: undefined }
+      : v ? viewToQuery({ lat: v.center.lat, lng: v.center.lng, zoom: v.zoom }) : {}
     const patch = {
-      ...(v ? viewToQuery({ lat: v.center.lat, lng: v.center.lng, zoom: v.zoom }) : {}),
+      ...viewPatch,
       ...filtersToQuery({ categories: categories.value, confirmedOnly: confirmedOnly.value }),
     }
     const next = mergeMapQuery(route.query, patch)
@@ -44,6 +48,7 @@ export function useMapUrlSync() {
   }
 
   watch([view, settled], () => schedule(VIEW_SYNC_DELAY))
+  watch(centeredOnUser, () => schedule(0))
   watch([categories, confirmedOnly], () => schedule(0), { deep: true })
   // Après un changement de page (fiche ouverte / fermée, « Retour »), la query
   // de la nouvelle entrée peut dater : on y remet la vue actuelle.

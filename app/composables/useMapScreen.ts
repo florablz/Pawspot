@@ -18,7 +18,7 @@ export function useMapScreen(mapRef: Ref<PawspotMapApi | null>) {
   const { latitude, longitude, loading: locating, error: locationError, getLocation } = useUserLocation()
   const places = usePlaces()
   const filters = useFilters()
-  const { view, settled } = useMapView()
+  const { view, settled, centeredOnUser } = useMapView()
   const sheet = usePlaceSheet()
   useMapUrlSync()
 
@@ -94,6 +94,8 @@ export function useMapScreen(mapRef: Ref<PawspotMapApi | null>) {
       localized.value = true
       if (!move || latitude.value == null || longitude.value == null) return
       loadOnNextView = true
+      // Avant le déplacement : la vue sur la position ne doit jamais passer dans l'URL.
+      centeredOnUser.value = true
       mapRef.value?.flyTo(latitude.value, longitude.value, 14)
     }
     catch {
@@ -138,6 +140,7 @@ export function useMapScreen(mapRef: Ref<PawspotMapApi | null>) {
     const map = mapRef.value
     if (!map) return
     if (sheet.selected.value) sheet.close()
+    centeredOnUser.value = false
     loadOnNextView = true
     settled.value = true
     map.showArea({
@@ -159,12 +162,18 @@ export function useMapScreen(mapRef: Ref<PawspotMapApi | null>) {
 
   onBeforeUnmount(() => clearTimeout(searchFallback))
 
+  /** Déplacement à la main (glisser, zoom, clavier) : la vue redevient partageable. */
+  function onUserMove() {
+    centeredOnUser.value = false
+  }
+
   function searchHere() {
     if (view.value) places.fetchPlaces(view.value)
   }
 
   watch(() => sheet.selected.value?.id, (id, prev) => {
     if (id && sheet.selected.value) {
+      centeredOnUser.value = false
       nextTick(() => sheet.selected.value && revealPlace(sheet.selected.value))
     }
     else if (prev) {
@@ -191,6 +200,7 @@ export function useMapScreen(mapRef: Ref<PawspotMapApi | null>) {
     showSearchHere,
     locationMessage,
     onViewChange,
+    onUserMove,
     onMapReady,
     locateMe,
     goToResult,
