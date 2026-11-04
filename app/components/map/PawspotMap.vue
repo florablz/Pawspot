@@ -16,6 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:view': [view: MapView]
   'select-place': [place: Place]
+  /** L'utilisateur a déplacé ou zoomé la carte lui-même (glisser, molette, boutons, clavier, bulle). */
+  'user-move': []
   /** La carte Leaflet est créée (les méthodes exposées fonctionnent). */
   'ready': []
 }>()
@@ -43,6 +45,7 @@ let renderedSelectedId: string | null = null
 let userMarker: Leaflet.Marker | null = null
 let L: typeof Leaflet | null = null
 let resizeObserver: ResizeObserver | null = null
+let stopWatchingMoves: (() => void) | null = null
 const navigation = createMapNavigation(() => map, () => L)
 
 function reducedMotion(): boolean {
@@ -191,6 +194,7 @@ onMounted(async () => {
   }).addTo(leafletMap)
 
   leafletMap.on('moveend', emitView)
+  stopWatchingMoves = watchUserMoves(leafletMap, mapEl.value, clusterLayer, () => emit('user-move'))
 
   // Recalcule la taille de la carte quand la mise en page change.
   resizeObserver = new ResizeObserver(() => map?.invalidateSize())
@@ -215,6 +219,7 @@ watch(() => [props.latitude, props.longitude], () => updateUserMarker())
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  stopWatchingMoves?.()
   map?.remove()
   map = null
   clusterLayer = null

@@ -67,6 +67,7 @@ const besidePanel = computed(() => (sheetOpen.value ? 'lg:pr-[416px]' : ''))
           :selected-place-id="selected?.id ?? null"
           :start-view="s.startView"
           @update:view="s.onViewChange"
+          @user-move="s.onUserMove"
           @select-place="open"
           @ready="s.onMapReady"
         />
