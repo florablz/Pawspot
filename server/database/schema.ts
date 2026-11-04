@@ -92,12 +92,14 @@ export const osmLookupMisses = sqliteTable('osm_lookup_misses', {
 
 /**
  * Cache des réponses de géocodage (proxy `GET /api/geocode`, Nominatim / Photon) :
- * une ligne par requête normalisée (`geocodeCacheKey` de server/services/geocode),
- * valable 30 jours (`GEOCODE_CACHE_TTL_MS`). Une liste vide (« aucun résultat »)
- * est aussi mise en cache. Les lignes expirées sont purgées à chaque nouvel ajout.
+ * une ligne par requête normalisée (`geocodeCacheKey` de server/services/geocode,
+ * identique à la chaîne envoyée au fournisseur), valable 30 jours
+ * (`GEOCODE_CACHE_TTL_MS`), 24 h pour une liste vide (`GEOCODE_EMPTY_CACHE_TTL_MS`).
+ * Les lignes expirées sont purgées à chaque nouvel ajout ; le total est plafonné
+ * (`GEOCODE_CACHE_MAX_ROWS`).
  */
 export const geocodeCache = sqliteTable('geocode_cache', {
-  /** Requête normalisée (`normalizeName`), ex. « 8 rue de rivoli paris ». */
+  /** Requête normalisée (`normalizeGeocodeQuery`), ex. « 8 rue de rivoli, paris ». */
   query: text('query').primaryKey(),
   /** `GeocodeResult[]` en JSON. */
   results: text('results', { mode: 'json' }).$type<GeocodeResult[]>().notNull(),

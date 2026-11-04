@@ -29,6 +29,13 @@
       "when": 1793727084739,
       "tag": "0003_geocode_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793811345392,
+      "tag": "0004_geocode_cache_cle_fournisseur",
+      "breakpoints": true
     }
   ]
 }
