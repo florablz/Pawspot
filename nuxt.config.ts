@@ -23,7 +23,7 @@ export default defineNuxtConfig({
       // Lue depuis TILE_ATTRIBUTION au build ; surchargeable via NUXT_PUBLIC_TILE_ATTRIBUTION.
       tileAttribution:
         process.env.TILE_ATTRIBUTION
-        || '&copy; les contributeurs d\'<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+        || '&copy; les contributeurs d\'<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
     },
   },
   typescript: {
