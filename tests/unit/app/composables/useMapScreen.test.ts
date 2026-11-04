@@ -20,6 +20,8 @@ const locationError = ref<string | null>(null)
 const getLocation = vi.fn<() => Promise<void>>()
 const view = ref<MapView | null>(null)
 const settled = ref(false)
+/** Carte centrée sur la position de l'utilisateur (vue retirée de l'URL). */
+const centeredOnUser = ref(false)
 const selected = ref<Place | null>(null)
 const fetchPlaces = vi.fn()
 const closeSheet = vi.fn(() => {
@@ -41,6 +43,7 @@ beforeEach(() => {
   locationError.value = null
   view.value = null
   settled.value = false
+  centeredOnUser.value = false
   selected.value = null
   vi.clearAllMocks()
   map.getView.mockReturnValue(null)
@@ -62,7 +65,7 @@ beforeEach(() => {
     fetchPlaces,
   }))
   vi.stubGlobal('useFilters', () => ({ categories: ref([]), confirmedOnly: ref(false), filtersActive: ref(false), clearFilters: vi.fn() }))
-  vi.stubGlobal('useMapView', () => ({ view, settled }))
+  vi.stubGlobal('useMapView', () => ({ view, settled, centeredOnUser }))
   vi.stubGlobal('usePlaceSheet', () => ({ selected, snap: ref('peek'), peekHeight: ref(null), open: vi.fn(), close: closeSheet }))
   vi.stubGlobal('useMapUrlSync', () => {})
   vi.stubGlobal('filterPlaces', (places: Place[]) => places)
@@ -151,6 +154,26 @@ describe('useMapScreen — position de départ', () => {
     expect(s.localized.value).toBe(true)
   })
 
+  it('géolocalisation : la vue sur la position est marquée « centrée sur l\'utilisateur » avant le vol', async () => {
+    let centeredAtFlight: boolean | undefined
+    map.flyTo.mockImplementation(() => {
+      centeredAtFlight = centeredOnUser.value
+      return true
+    })
+    const s = screen()
+    s.onMapReady()
+    await vi.waitFor(() => expect(map.flyTo).toHaveBeenCalled())
+    expect(centeredAtFlight).toBe(true)
+  })
+
+  it('déplacement à la main (onUserMove) : la vue n\'est plus « centrée sur l\'utilisateur »', async () => {
+    const s = screen()
+    s.onMapReady()
+    await vi.waitFor(() => expect(centeredOnUser.value).toBe(true))
+    s.onUserMove()
+    expect(centeredOnUser.value).toBe(false)
+  })
+
   it('après la géolocalisation, la fin du vol charge les lieux', async () => {
     const s = screen()
     s.onMapReady()
@@ -205,7 +228,8 @@ describe('useMapScreen — résultat de recherche (goToResult)', () => {
   const NO_INSETS = { bottom: 0, right: 0 }
 
   it.each<[GeocodeResultType, number, number]>([
-    ['address', 18, 11],
+    // 16 : l'adresse et les lieux de la rue autour (2a0168f).
+    ['address', 16, 11],
     ['place', 17, 11],
     ['street', 16, 11],
     ['postcode', 14, 11],
@@ -232,6 +256,13 @@ describe('useMapScreen — résultat de recherche (goToResult)', () => {
     const lyon = GEOCODE_LYON.results[0]!
     s.goToResult(lyon)
     expect(map.showArea).toHaveBeenCalledWith(expect.objectContaining({ bbox: lyon.bbox, maxZoom: 13 }), NO_INSETS)
+  })
+
+  it('recherche : la vue n\'est plus « centrée sur l\'utilisateur » (elle passe dans l\'URL)', () => {
+    centeredOnUser.value = true
+    const s = screen()
+    s.goToResult(geocodeOfType('city'))
+    expect(centeredOnUser.value).toBe(false)
   })
 
   it('ferme la fiche ouverte', () => {

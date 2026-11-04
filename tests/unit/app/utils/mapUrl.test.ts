@@ -83,13 +83,14 @@ describe('parseFiltersQuery — filtres dans l\'URL', () => {
 })
 
 describe('viewToQuery / filtersToQuery — écriture dans l\'URL', () => {
-  it('arrondit les coordonnées à 5 décimales sans zéros inutiles et le zoom à l\'entier', () => {
-    expect(viewToQuery({ lat: 48.856614, lng: 2.3522219, zoom: 15 })).toEqual({ lat: '48.85661', lon: '2.35222', z: '15' })
+  it('arrondit les coordonnées à 3 décimales (≈ 100 m, pas de domicile dans un lien) sans zéros inutiles et le zoom à l\'entier', () => {
+    expect(viewToQuery({ lat: 48.856614, lng: 2.3522219, zoom: 15 })).toEqual({ lat: '48.857', lon: '2.352', z: '15' })
+    expect(viewToQuery({ lat: -21.11519, lng: 55.53639, zoom: 14 })).toEqual({ lat: '-21.115', lon: '55.536', z: '14' })
     expect(viewToQuery({ lat: 45.5, lng: 4, zoom: 12.4 })).toEqual({ lat: '45.5', lon: '4', z: '12' })
   })
 
   it('aller-retour : la vue écrite se relit à l\'identique', () => {
-    const view = { lat: 43.29651, lng: 5.36978, zoom: 14 }
+    const view = { lat: 43.297, lng: 5.37, zoom: 14 }
     expect(parseViewQuery(viewToQuery(view))).toEqual(view)
   })
 
