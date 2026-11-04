@@ -46,6 +46,7 @@ Les lieux viennent d'**OpenStreetMap** (API Overpass). La communauté peut ajout
    npm run dev
    ```
    Ouvrez ensuite <http://localhost:3000>.
+   > Sécurité : le serveur de développement n'est **pas** fait pour être exposé. Ne le lancez pas avec `--host` (ni `npm run dev -- --host`) sur un réseau partagé (wifi public, bureau…) : il est alors joignable par les autres machines du réseau, sans aucune protection.
 
 ## Si aucun lieu ne s'affiche
 
@@ -154,8 +155,10 @@ Toutes les variables sont documentées dans [`.env.example`](.env.example). Le f
 | `DATABASE_AUTH_TOKEN` | en prod | Jeton Turso. Vide en local. |
 | `APP_URL` | oui | URL publique de l'app, sans `/` final (`http://localhost:3000` en local, `https://<votre-projet>.vercel.app` en production). Sert aux liens d'emails et aux balises de partage (Open Graph, canonique). Lue au build : redéployez après l'avoir modifiée. |
 | `TILE_URL` | non | Modèle d'URL des tuiles de carte (avec `{z}`, `{x}`, `{y}`). Par défaut : `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, suffisant en développement. En production, un fournisseur avec offre gratuite (OpenFreeMap, MapTiler, Stadia…) : le serveur de tuiles OSM interdit l'usage intensif. Lue au build. |
-| `TILE_ATTRIBUTION` | non | Mention de crédit affichée sur la carte (HTML autorisé). Par défaut : « © les contributeurs d'OpenStreetMap » avec un lien vers la page de copyright OSM. À adapter si le fournisseur de tuiles impose sa mention. Lue au build. |
-| `NOMINATIM_URL` | non | Adresse de base du service de recherche d'adresses Nominatim, **sans** `/search` ni `/` final. Par défaut : `https://nominatim.openstreetmap.org`. Exemple pour un serveur local de test de bout en bout : `http://127.0.0.1:8088`. |
+| `TILE_ATTRIBUTION` | non | Mention de crédit affichée sur la carte, injectée telle quelle en HTML : n'y mettez **jamais** de contenu venant d'utilisateurs. Par défaut : « © les contributeurs d'OpenStreetMap » avec un lien vers la page de copyright OSM. À adapter si le fournisseur de tuiles impose sa mention. Lue au build. |
+| `GEOCODER` | non | Fournisseur de recherche d'adresses : `photon` (par défaut) ou `nominatim`. L'instance publique de Nominatim (OSMF) **interdit l'autocomplétion** : n'utilisez `nominatim` qu'avec une instance qui l'autorise. Le cache `geocode_cache` ne distingue pas les fournisseurs : après un changement, videz cette table si vous voulez repartir de zéro. |
+| `PHOTON_URL` | non | Adresse de base du service Photon, **sans** `/api` ni `/` final. Par défaut : `https://photon.komoot.io`. `http:` est accepté pour un serveur local de test (ex. `http://127.0.0.1:8089`). |
+| `NOMINATIM_URL` | non | Utilisée **seulement** si `GEOCODER=nominatim`. Adresse de base du service Nominatim, **sans** `/search` ni `/` final. Par défaut : `https://nominatim.openstreetmap.org`. Exemple pour un serveur local de test de bout en bout : `http://127.0.0.1:8088`. |
 | `OVERPASS_ENDPOINTS` | non | Serveurs Overpass à essayer, dans l'ordre : URLs complètes se terminant par `/api/interpreter`, séparées par des virgules. Les entrées invalides sont ignorées ; si aucune n'est valide (ou si la variable est absente), la liste par défaut est utilisée (overpass-api.de, maps.mail.ru, overpass.private.coffee, overpass.kumi.systems). |
 | `PREFETCH_ALLOW_REMOTE` | non | `1` autorise `npm run places:prefetch` à écrire dans une base distante (Turso). Absent par défaut : le script n'accepte qu'une base locale. |
 | `PAWSPOT_MIGRATIONS_DIR` | non | Dossier des migrations. Utile seulement si le serveur tourne avec une base locale depuis un dossier situé hors du dépôt. À laisser vide sinon. |
