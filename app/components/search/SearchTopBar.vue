@@ -15,6 +15,8 @@ defineEmits<{
   'locate': []
   'select-place': [place: Place]
   'select-address': [result: GeocodeResult]
+  /** Lien d'évitement : aller directement aux marqueurs de la carte. */
+  'skip-to-map': []
 }>()
 
 const box = ref<{ focus: () => void } | null>(null)
@@ -29,7 +31,17 @@ const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible
     class="glass-strong relative flex items-center gap-2 rounded-2xl py-1 pl-3 pr-1 transition-shadow"
     :class="highlight ? 'ring-2 ring-paw-orange-400' : ''"
     data-testid="search-bar"
+    data-map-overlay
   >
+    <!-- Lien d'évitement, visible au focus : saute la recherche et les filtres (marron 900 sur orange 500 = 5,97:1). -->
+    <a
+      href="#carte-lieux"
+      class="sr-only left-3 top-full z-10 mt-2 rounded-full bg-paw-orange-500 text-sm font-semibold text-paw-brown-900 shadow-lg focus:not-sr-only focus:absolute focus:flex focus:min-h-[44px] focus:items-center focus:whitespace-nowrap focus:px-4 focus:outline-none focus:ring-2 focus:ring-white"
+      data-testid="skip-to-map"
+      @click.prevent="$emit('skip-to-map')"
+    >
+      Aller aux lieux de la carte
+    </a>
     <img src="/logo/patte-de-chien.png" alt="PawSpot" class="h-7 w-7 shrink-0 object-contain">
     <SearchBox
       ref="box"
