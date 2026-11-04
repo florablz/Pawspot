@@ -1,5 +1,5 @@
 /**
- * Parcours 1 (CAHIER_DES_CHARGES.md §6) : ouvrir l'app → voir des lieux → filtrer →
+ * Parcours 1 : ouvrir l'app → voir des lieux → filtrer →
  * ouvrir une fiche → la fermer. Géolocalisation simulée sur Paris (playwright.config.ts),
  * Overpass simulé (`tests/fixtures/overpass/paris-centre.json`), tuiles grises.
  */

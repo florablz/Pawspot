@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
 /**
- * Parcours de bout en bout (CAHIER_DES_CHARGES.md §6) sur le build de production.
+ * Parcours de bout en bout sur le build de production.
  *
  * Aucun appel réseau réel :
  * - navigateur : toute résolution DNS hors localhost échoue (`--host-resolver-rules`) ;
