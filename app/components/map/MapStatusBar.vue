@@ -37,7 +37,16 @@ defineEmits<{
   'focus-search': []
 }>()
 
+/**
+ * OpenStreetMap ne répond pas et notre sauvegarde n'a rien pour cette zone :
+ * un seul message (pas de « 0 lieu affiché », « Aucun lieu trouvé » ni « Compléter »).
+ */
+const unavailable = computed(() =>
+  props.stale && props.loaded && props.loadedCount === 0 && !props.outsideCoverage && !props.error,
+)
+
 const countText = computed(() => {
+  if (unavailable.value) return null
   // Rien de chargé : pas de « 0 lieu affiché » trompeur.
   if (!props.loaded) {
     if (props.fetching || props.locating || props.locationMessage) return null
@@ -54,7 +63,7 @@ const confirmedEmpty = computed(() =>
 )
 
 const emptyText = computed(() => {
-  if (!props.loaded || props.fetching || props.error || props.count > 0) return null
+  if (!props.loaded || props.fetching || props.error || props.count > 0 || unavailable.value) return null
   if (confirmedEmpty.value) return null
   if (props.filtersActive && props.loadedCount > 0) return 'Aucun lieu ne correspond à vos filtres.'
   if (props.zoomTooLow || props.outsideCoverage) return null
@@ -63,7 +72,7 @@ const emptyText = computed(() => {
 
 /** La barre principale a quelque chose à montrer (sinon on ne garde que les bandeaux). */
 const showMain = computed(() =>
-  !!countText.value || props.filtersActive || props.fetching || !!props.error || !!emptyText.value || confirmedEmpty.value,
+  !!countText.value || (props.filtersActive && !unavailable.value) || props.fetching || !!props.error || !!emptyText.value || confirmedEmpty.value,
 )
 
 const actionBtn = 'min-h-[44px] shrink-0 rounded-full px-4 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paw-orange-300'
@@ -89,7 +98,15 @@ const orangeBtn = 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-
     <p v-if="truncated" :class="notice" data-testid="notice-truncated">
       <span aria-hidden="true">🔍</span> Trop de lieux dans cette zone : zoomez pour tous les afficher.
     </p>
-    <div v-if="stale" :class="[notice, 'flex items-center justify-between gap-3 py-1.5 text-paw-orange-200']" data-testid="notice-stale">
+    <div v-if="unavailable" :class="[notice, 'flex items-center justify-between gap-3 py-1.5 text-paw-orange-200']" data-testid="notice-unavailable">
+      <span>
+        <span aria-hidden="true">⚠️</span> Impossible de charger les lieux de cette zone : OpenStreetMap ne répond pas pour l'instant.
+      </span>
+      <button v-if="!fetching" type="button" :class="[actionBtn, orangeBtn]" @click="$emit('retry')">
+        Réessayer
+      </button>
+    </div>
+    <div v-else-if="stale" :class="[notice, 'flex items-center justify-between gap-3 py-1.5 text-paw-orange-200']" data-testid="notice-stale">
       <span>
         <span aria-hidden="true">⚠️</span> Lieux affichés depuis notre sauvegarde : OpenStreetMap ne répond pas pour l'instant, certaines infos peuvent dater.
       </span>
@@ -97,7 +114,7 @@ const orangeBtn = 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-
         Réessayer
       </button>
     </div>
-    <div v-if="incomplete && !fetching && !error" :class="[notice, 'flex items-center justify-between gap-3 py-1.5']" data-testid="notice-incomplete">
+    <div v-if="incomplete && !fetching && !error && !unavailable" :class="[notice, 'flex items-center justify-between gap-3 py-1.5']" data-testid="notice-incomplete">
       <span>Une partie de la zone n'a pas encore été chargée.</span>
       <button type="button" :class="[actionBtn, orangeBtn]" @click="$emit('retry')">
         Compléter
@@ -106,7 +123,7 @@ const orangeBtn = 'bg-paw-orange-500/20 text-paw-orange-300 hover:bg-paw-orange-
 
     <!-- Barre principale -->
     <div v-if="showMain" class="pointer-events-auto flex flex-col gap-1 rounded-2xl border border-white/10 bg-paw-brown-900/90 px-5 py-2.5 backdrop-blur">
-      <div v-if="countText || filtersActive" class="flex min-h-[44px] items-center justify-between gap-3">
+      <div v-if="countText || (filtersActive && !unavailable)" class="flex min-h-[44px] items-center justify-between gap-3">
         <p class="text-sm font-semibold text-white" data-testid="places-count">{{ countText }}</p>
         <button
           v-if="filtersActive"
